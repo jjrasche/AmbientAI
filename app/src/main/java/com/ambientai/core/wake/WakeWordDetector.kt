@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
+import com.ambientai.BuildConfig
 /**
  * Detects wake words using Porcupine.
  * Uses built-in "porcupine" wake word initially.
@@ -37,7 +38,7 @@ class WakeWordDetector(
     fun initialize() {
         try {
             porcupine = Porcupine.Builder()
-                .setAccessKey("YOUR_PICOVOICE_ACCESS_KEY") // TODO: Replace with actual key
+                .setAccessKey(BuildConfig.PICOVOICE_ACCESS_KEY)
                 .setKeyword(Porcupine.BuiltInKeyword.PORCUPINE)
                 .build(context)
 
