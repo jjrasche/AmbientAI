@@ -1,6 +1,7 @@
 package com.ambientai.data.repositories
 
 import android.content.Context
+import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.entities.Transcript_
 import io.objectbox.Box
@@ -14,14 +15,7 @@ import com.ambientai.data.entities.MyObjectBox
  */
 class TranscriptRepository(context: Context) {
 
-    private val box: Box<Transcript>
-
-    init {
-        val store = MyObjectBox.builder()
-            .androidContext(context.applicationContext)
-            .build()
-        box = store.boxFor()
-    }
+    private val box: Box<Transcript> = AmbientAIApp.boxStore.boxFor()
 
     /**
      * Save a new transcript or update existing one.

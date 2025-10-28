@@ -137,7 +137,10 @@ class VoiceListeningService : Service() {
         Log.d(TAG, "Wake word detected - starting STT")
         wakeWordDetector?.stop()
         updateNotification("Listening...")
-        speechRecognizer?.start()
+        serviceScope.launch {
+            delay(200) // 200ms delay
+            speechRecognizer?.start()
+        }
     }
 
     private fun handlePartialTranscript(text: String) {
