@@ -11,12 +11,15 @@ import android.media.MediaRecorder
 import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 import com.ambientai.BuildConfig
+
 /**
  * Detects wake words using Porcupine.
- * Uses built-in "porcupine" wake word initially.
+ * Uses custom "Coral" wake word from assets.
  */
 class WakeWordDetector(
     private val context: Context,
@@ -29,24 +32,48 @@ class WakeWordDetector(
 
     companion object {
         private const val TAG = "WakeWordDetector"
+        private const val WAKE_WORD_FILE = "coral_en_android_v3_0_0.ppn"
     }
 
     /**
-     * Initialize Porcupine with built-in wake word.
+     * Initialize Porcupine with custom "Coral" wake word.
      * Call this before start().
      */
     fun initialize() {
         try {
+            // Extract wake word file from assets to internal storage
+            val modelPath = extractAssetToFile(WAKE_WORD_FILE)
+
             porcupine = Porcupine.Builder()
                 .setAccessKey(BuildConfig.PICOVOICE_ACCESS_KEY)
-                .setKeyword(Porcupine.BuiltInKeyword.PORCUPINE)
+                .setKeywordPath(modelPath)
                 .build(context)
 
-            Log.d(TAG, "Porcupine initialized with built-in wake word")
+            Log.d(TAG, "Porcupine initialized with custom wake word: Coral")
         } catch (e: PorcupineException) {
             Log.e(TAG, "Failed to initialize Porcupine", e)
             throw e
         }
+    }
+
+    /**
+     * Extract wake word file from assets to internal storage.
+     * Porcupine requires a file path, not an asset stream.
+     */
+    private fun extractAssetToFile(assetName: String): String {
+        val file = File(context.filesDir, assetName)
+
+        // Only extract if file doesn't exist or is outdated
+        if (!file.exists() || file.length() == 0L) {
+            context.assets.open(assetName).use { input ->
+                FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            Log.d(TAG, "Extracted $assetName to ${file.absolutePath}")
+        }
+
+        return file.absolutePath
     }
 
     /**
@@ -93,7 +120,7 @@ class WakeWordDetector(
                 detectWakeWord(porcupineInstance)
             }
 
-            Log.d(TAG, "Started listening for wake word")
+            Log.d(TAG, "Started listening for wake word: Coral")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start AudioRecord", e)
             stop()
@@ -115,7 +142,7 @@ class WakeWordDetector(
                 val keywordIndex = porcupine.process(buffer)
 
                 if (keywordIndex >= 0) {
-                    Log.d(TAG, "Wake word detected!")
+                    Log.d(TAG, "Wake word detected: Coral!")
 
                     // Notify on main thread
                     withContext(Dispatchers.Main) {

@@ -25,6 +25,7 @@ import kotlin.coroutines.coroutineContext
  */
 class SpeechRecognizer(
     private val context: Context,
+    private val onPartialTranscript: (text: String) -> Unit,
     private val onTranscriptReady: (text: String, audioFilePath: String) -> Unit,
     private val onError: (errorCode: Int) -> Unit
 ) {
@@ -288,7 +289,9 @@ class SpeechRecognizer(
                 val partial = matches[0]
                 Log.d(TAG, "Partial result: $partial")
 
-                // Update timestamp on any speech activity
+                // Notify UI with partial result
+                onPartialTranscript(partial)
+
                 lastResultTime = System.currentTimeMillis()
             }
         }

@@ -5,32 +5,49 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.os.Build
+import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.ambientai.R
 import com.ambientai.core.stt.SpeechRecognizer
 import com.ambientai.core.wake.WakeWordDetector
+import com.ambientai.data.entities.Transcript
+import com.ambientai.data.repositories.TranscriptRepository
 import kotlinx.coroutines.*
 
-/**
- * Foreground service that runs continuously to:
- * 1. Listen for wake word via WakeWordDetector
- * 2. Trigger STT on wake word detection
- * 3. Save transcripts with audio files
- */
 class VoiceListeningService : Service() {
 
     private var wakeWordDetector: WakeWordDetector? = null
     private var speechRecognizer: SpeechRecognizer? = null
+    private var transcriptRepository: TranscriptRepository? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    // Binding support
+    private val binder = LocalBinder()
+    private val listeners = mutableSetOf<TranscriptUpdateListener>()
 
     companion object {
         private const val TAG = "VoiceListeningService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
+    }
+
+    interface TranscriptUpdateListener {
+        fun onPartialTranscript(text: String)
+        fun onTranscriptSaved(transcript: Transcript)
+    }
+
+    inner class LocalBinder : Binder() {
+        fun getService(): VoiceListeningService = this@VoiceListeningService
+    }
+
+    fun registerListener(listener: TranscriptUpdateListener) {
+        listeners.add(listener)
+    }
+
+    fun unregisterListener(listener: TranscriptUpdateListener) {
+        listeners.remove(listener)
     }
 
     override fun onCreate() {
@@ -40,6 +57,7 @@ class VoiceListeningService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification("Listening for wake word..."))
 
+        transcriptRepository = TranscriptRepository(applicationContext)
         initializeComponents()
     }
 
@@ -49,7 +67,7 @@ class VoiceListeningService : Service() {
         return START_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onDestroy() {
         super.onDestroy()
@@ -57,11 +75,12 @@ class VoiceListeningService : Service() {
 
         wakeWordDetector?.cleanup()
         speechRecognizer?.cleanup()
+        transcriptRepository?.close()
         serviceScope.cancel()
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Voice Listening",
@@ -94,16 +113,15 @@ class VoiceListeningService : Service() {
 
     private fun initializeComponents() {
         try {
-            // Initialize wake word detector
             wakeWordDetector = WakeWordDetector(
                 context = applicationContext,
                 onWakeWordDetected = ::handleWakeWord
             )
             wakeWordDetector?.initialize()
 
-            // Initialize speech recognizer
             speechRecognizer = SpeechRecognizer(
                 context = applicationContext,
+                onPartialTranscript = ::handlePartialTranscript,
                 onTranscriptReady = ::handleTranscript,
                 onError = ::handleSttError
             )
@@ -117,38 +135,35 @@ class VoiceListeningService : Service() {
 
     private fun handleWakeWord() {
         Log.d(TAG, "Wake word detected - starting STT")
-
-        // Stop wake word detection while transcribing
         wakeWordDetector?.stop()
-
-        // Update notification
         updateNotification("Listening...")
-
-        // Start speech recognition
         speechRecognizer?.start()
+    }
+
+    private fun handlePartialTranscript(text: String) {
+        Log.d(TAG, "Partial: $text")
+        listeners.forEach { it.onPartialTranscript(text) }
     }
 
     private fun handleTranscript(text: String, audioFilePath: String) {
         Log.d(TAG, "Transcript received: $text")
         Log.d(TAG, "Audio saved to: $audioFilePath")
 
-        // TODO: Phase 1 - Save to ObjectBox
-        // val transcript = Transcript(
-        //     text = text,
-        //     audioFilePath = audioFilePath,
-        //     timestamp = System.currentTimeMillis()
-        // )
-        // transcriptRepository.save(transcript)
+        val transcript = Transcript(
+            text = text,
+            audioFilePath = audioFilePath,
+            timestamp = System.currentTimeMillis()
+        )
+        transcriptRepository?.save(transcript)
 
-        // Resume wake word detection
+        listeners.forEach { it.onTranscriptSaved(transcript) }
+
         updateNotification("Listening for wake word...")
         wakeWordDetector?.start()
     }
 
     private fun handleSttError(errorCode: Int) {
         Log.e(TAG, "STT error: $errorCode")
-
-        // Resume wake word detection on error
         updateNotification("Listening for wake word...")
         wakeWordDetector?.start()
     }
