@@ -6,14 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.media.MediaPlayer
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,7 +31,6 @@ class MainActivity : ComponentActivity() {
     private var voiceService: VoiceListeningService? = null
     private var isBound = false
     private var transcriptRepository: TranscriptRepository? = null
-    private var mediaPlayer: MediaPlayer? = null
 
     private val dateFormat = SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault())
 
@@ -96,8 +93,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     DebugScreen(
                         currentTranscript = currentTranscript,
-                        transcripts = transcripts,
-                        onTranscriptClick = ::playAudio
+                        transcripts = transcripts
                     )
                 }
             }
@@ -122,7 +118,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        mediaPlayer?.release()
         transcriptRepository?.close()
     }
 
@@ -152,25 +147,10 @@ class MainActivity : ComponentActivity() {
         transcripts = transcriptRepository?.getRecent(20) ?: emptyList()
     }
 
-    private fun playAudio(audioPath: String) {
-        try {
-            mediaPlayer?.release()
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(audioPath)
-                prepare()
-                start()
-            }
-            Log.d(TAG, "Playing audio: $audioPath")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to play audio", e)
-        }
-    }
-
     @Composable
     fun DebugScreen(
         currentTranscript: String,
-        transcripts: List<Transcript>,
-        onTranscriptClick: (String) -> Unit
+        transcripts: List<Transcript>
     ) {
         Column(
             modifier = Modifier
@@ -183,7 +163,6 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            // Live transcript
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -207,7 +186,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Saved transcripts
             Text(
                 text = "Recent Transcripts (${transcripts.size})",
                 style = MaterialTheme.typography.titleMedium,
@@ -219,24 +197,16 @@ class MainActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(transcripts) { transcript ->
-                    TranscriptItem(
-                        transcript = transcript,
-                        onClick = { onTranscriptClick(transcript.audioFilePath) }
-                    )
+                    TranscriptItem(transcript = transcript)
                 }
             }
         }
     }
 
     @Composable
-    fun TranscriptItem(
-        transcript: Transcript,
-        onClick: () -> Unit
-    ) {
+    fun TranscriptItem(transcript: Transcript) {
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onClick() }
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Text(

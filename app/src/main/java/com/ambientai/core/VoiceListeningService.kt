@@ -5,7 +5,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -23,7 +25,6 @@ class VoiceListeningService : Service() {
     private var transcriptRepository: TranscriptRepository? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-    // Binding support
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
 
@@ -55,7 +56,18 @@ class VoiceListeningService : Service() {
         Log.d(TAG, "Service created")
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification("Listening for wake word..."))
+
+        val notification = createNotification("Listening for wake word...")
+
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         transcriptRepository = TranscriptRepository(applicationContext)
         initializeComponents()
@@ -80,7 +92,7 @@ class VoiceListeningService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Voice Listening",
@@ -138,7 +150,7 @@ class VoiceListeningService : Service() {
         wakeWordDetector?.stop()
         updateNotification("Listening...")
         serviceScope.launch {
-            delay(200) // 200ms delay
+            delay(200)
             speechRecognizer?.start()
         }
     }
@@ -148,13 +160,12 @@ class VoiceListeningService : Service() {
         listeners.forEach { it.onPartialTranscript(text) }
     }
 
-    private fun handleTranscript(text: String, audioFilePath: String) {
+    private fun handleTranscript(text: String) {
         Log.d(TAG, "Transcript received: $text")
-        Log.d(TAG, "Audio saved to: $audioFilePath")
 
         val transcript = Transcript(
             text = text,
-            audioFilePath = audioFilePath,
+            audioFilePath = "",
             timestamp = System.currentTimeMillis()
         )
         transcriptRepository?.save(transcript)
