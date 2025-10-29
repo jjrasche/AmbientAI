@@ -21,8 +21,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
+import com.ambientai.core.llm.GeminiNanoTester
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.TranscriptRepository
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -63,6 +65,7 @@ class MainActivity : ComponentActivity() {
 
     private var currentTranscript by mutableStateOf("")
     private var transcripts by mutableStateOf<List<Transcript>>(emptyList())
+    private var showNanoTest by mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -91,10 +94,15 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    DebugScreen(
-                        currentTranscript = currentTranscript,
-                        transcripts = transcripts
-                    )
+                    if (showNanoTest) {
+                        NanoTestScreen(onBack = { showNanoTest = false })
+                    } else {
+                        DebugScreen(
+                            currentTranscript = currentTranscript,
+                            transcripts = transcripts,
+                            onTestNano = { showNanoTest = true }
+                        )
+                    }
                 }
             }
         }
@@ -150,18 +158,30 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun DebugScreen(
         currentTranscript: String,
-        transcripts: List<Transcript>
+        transcripts: List<Transcript>,
+        onTestNano: () -> Unit
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .systemBarsPadding()
                 .padding(16.dp)
         ) {
-            Text(
-                text = "Ambient AI Debug",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Ambient AI Debug",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+
+                Button(onClick = onTestNano) {
+                    Text("Test Nano")
+                }
+            }
 
             Card(
                 modifier = Modifier
@@ -218,6 +238,139 @@ class MainActivity : ComponentActivity() {
                 Text(
                     text = transcript.text,
                     style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun NanoTestScreen(onBack: () -> Unit) {
+        var isRunning by remember { mutableStateOf(false) }
+        var currentProgress by remember { mutableStateOf("") }
+        var testResults by remember { mutableStateOf<List<GeminiNanoTester.TestResult>>(emptyList()) }
+
+        val scope = rememberCoroutineScope()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Nano Tests",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+
+                Button(onClick = onBack) {
+                    Text("Back")
+                }
+            }
+
+            Button(
+                onClick = {
+                    scope.launch {
+                        isRunning = true
+                        testResults = emptyList()
+                        currentProgress = "Starting tests..."
+
+                        val tester = GeminiNanoTester(applicationContext)
+                        val results = tester.runAllTests { progress ->
+                            currentProgress = progress
+                        }
+
+                        testResults = results
+                        isRunning = false
+                        currentProgress = "Tests complete"
+                    }
+                },
+                enabled = !isRunning,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Text(if (isRunning) "Running..." else "Run All Tests")
+            }
+
+            if (currentProgress.isNotEmpty()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Text(
+                        text = currentProgress,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(testResults) { result ->
+                    TestResultCard(result = result)
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun TestResultCard(result: GeminiNanoTester.TestResult) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = if (result.success) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.errorContainer
+                }
+            )
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = result.testName,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (result.success) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        }
+                    )
+                    Text(
+                        text = if (result.success) "✓" else "✗",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (result.success) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = result.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (result.success) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    }
                 )
             }
         }
