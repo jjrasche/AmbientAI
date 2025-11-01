@@ -12,6 +12,7 @@ porcupine = "3.0.3"
 aicore = "0.0.1-exp02"
 testRunner = "1.5.2"
 androidxTestCore = "1.5.0"
+runtimeLivedata = "1.9.4"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -31,6 +32,7 @@ porcupine-android = { group = "ai.picovoice", name = "porcupine-android", versio
 aicore = { group = "com.google.ai.edge.aicore", name = "aicore", version.ref = "aicore" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+androidx-compose-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata", version.ref = "runtimeLivedata" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -82,12 +83,11 @@ class MainActivity : ComponentActivity() {
 
         override fun onTranscriptSaved(transcript: Transcript) {
             currentTranscript = ""
-            loadTimelineItems()
+            // LiveData will handle the update automatically
         }
     }
 
     private var currentTranscript by mutableStateOf("")
-    private var timelineItems by mutableStateOf<List<TimelineItem>>(emptyList())
     private var showNanoTest by mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -110,7 +110,6 @@ class MainActivity : ComponentActivity() {
         llmInteractionRepository = LlmInteractionRepository(applicationContext)
 
         checkPermissionsAndStart()
-        loadTimelineItems()
 
         setContent {
             MaterialTheme {
@@ -121,9 +120,10 @@ class MainActivity : ComponentActivity() {
                     if (showNanoTest) {
                         NanoTestScreen(onBack = { showNanoTest = false })
                     } else {
-                        DebugScreen(
+                        DebugScreenWithLiveData(
                             currentTranscript = currentTranscript,
-                            timelineItems = timelineItems,
+                            transcriptRepository = transcriptRepository!!,
+                            llmInteractionRepository = llmInteractionRepository!!,
                             onTestNano = { showNanoTest = true },
                             onToggleExcludeFromContext = { transcript ->
                                 toggleExcludeFromContext(transcript)
@@ -178,23 +178,40 @@ class MainActivity : ComponentActivity() {
         ContextCompat.startForegroundService(this, intent)
     }
 
-    private fun loadTimelineItems() {
-        val transcripts = transcriptRepository?.getRecent(20) ?: emptyList()
-        val llmInteractions = llmInteractionRepository?.getRecent(20) ?: emptyList()
-
-        val items = mutableListOf<TimelineItem>()
-        items.addAll(transcripts.map { TimelineItem.TranscriptItem(it) })
-        items.addAll(llmInteractions.map { TimelineItem.LlmItem(it) })
-
-        timelineItems = items.sortedByDescending { it.timestamp }
-    }
-
     private fun toggleExcludeFromContext(transcript: Transcript) {
         val oldValue = transcript.excludeFromContext
         transcript.excludeFromContext = !transcript.excludeFromContext
         transcriptRepository?.update(transcript)
         Log.d(TAG, "Toggled transcript ${transcript.id}: excludeFromContext ${oldValue} -> ${transcript.excludeFromContext}")
-        loadTimelineItems()
+        // LiveData will handle the UI update automatically
+    }
+
+    @Composable
+    fun DebugScreenWithLiveData(
+        currentTranscript: String,
+        transcriptRepository: TranscriptRepository,
+        llmInteractionRepository: LlmInteractionRepository,
+        onTestNano: () -> Unit,
+        onToggleExcludeFromContext: (Transcript) -> Unit
+    ) {
+        // Observe LiveData from repositories
+        val transcripts by transcriptRepository.recentTranscripts.observeAsState(emptyList())
+        val llmInteractions by llmInteractionRepository.recentInteractions.observeAsState(emptyList())
+
+        // Combine into timeline items
+        val timelineItems = remember(transcripts, llmInteractions) {
+            buildList {
+                addAll(transcripts.map { TimelineItem.TranscriptItem(it) })
+                addAll(llmInteractions.map { TimelineItem.LlmItem(it) })
+            }.sortedByDescending { it.timestamp }
+        }
+
+        DebugScreen(
+            currentTranscript = currentTranscript,
+            timelineItems = timelineItems,
+            onTestNano = onTestNano,
+            onToggleExcludeFromContext = onToggleExcludeFromContext
+        )
     }
 
     @Composable

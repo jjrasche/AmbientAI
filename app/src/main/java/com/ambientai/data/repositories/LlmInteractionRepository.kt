@@ -1,6 +1,8 @@
 package com.ambientai.data.repositories
 
 import android.content.Context
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.LlmInteraction
 import com.ambientai.data.entities.LlmInteraction_
@@ -10,13 +12,32 @@ import io.objectbox.query.OrderFlags
 
 /**
  * Repository for CRUD operations on LlmInteraction entities.
+ * Exposes LiveData for reactive UI updates.
  */
 class LlmInteractionRepository(context: Context) {
 
     private val box: Box<LlmInteraction> = AmbientAIApp.boxStore.boxFor()
 
+    // LiveData for reactive upddates
+    private val _interactions = MutableLiveData<List<LlmInteraction>>()
+    val interactions: LiveData<List<LlmInteraction>> = _interactions
+
+    private val _recentInteractions = MutableLiveData<List<LlmInteraction>>()
+    val recentInteractions: LiveData<List<LlmInteraction>> = _recentInteractions
+
+    init {
+        // Initialize with current data
+        refreshLiveData()
+    }
+
+    private fun refreshLiveData() {
+        _interactions.postValue(box.all)
+        _recentInteractions.postValue(getRecent(20))
+    }
+
     fun save(interaction: LlmInteraction): LlmInteraction {
         box.put(interaction)
+        refreshLiveData()
         return interaction
     }
 
@@ -58,11 +79,14 @@ class LlmInteractionRepository(context: Context) {
         val interaction = box.get(id) ?: return false
         interaction.grade = grade
         box.put(interaction)
+        refreshLiveData()
         return true
     }
 
     fun delete(id: Long): Boolean {
-        return box.remove(id)
+        val result = box.remove(id)
+        refreshLiveData()
+        return result
     }
 
     fun count(): Long {

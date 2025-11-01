@@ -62,6 +62,11 @@ dependencies {
     implementation(libs.porcupine.android)
     implementation(libs.aicore)
 
+    // LiveData support for Compose
+    implementation("androidx.compose.runtime:runtime-livedata:1.7.5")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
+    implementation(libs.androidx.compose.runtime.livedata)
+
     testImplementation(libs.junit)
 
     androidTestImplementation(libs.aicore)

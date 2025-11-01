@@ -1,6 +1,8 @@
 package com.ambientai.data.repositories
 
 import android.content.Context
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.entities.Transcript_
@@ -12,14 +14,33 @@ import java.util.*
 
 /**
  * Repository for CRUD operations on Transcript entities.
+ * Exposes LiveData for reactive UI updates.
  */
 class TranscriptRepository(context: Context) {
 
     private val box: Box<Transcript> = AmbientAIApp.boxStore.boxFor()
     private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
 
+    // LiveData for reactive updates
+    private val _transcripts = MutableLiveData<List<Transcript>>()
+    val transcripts: LiveData<List<Transcript>> = _transcripts
+
+    private val _recentTranscripts = MutableLiveData<List<Transcript>>()
+    val recentTranscripts: LiveData<List<Transcript>> = _recentTranscripts
+
+    init {
+        // Initialize with current data
+        refreshLiveData()
+    }
+
+    private fun refreshLiveData() {
+        _transcripts.postValue(getAll())
+        _recentTranscripts.postValue(getRecent(20))
+    }
+
     fun save(transcript: Transcript): Transcript {
         box.put(transcript)
+        refreshLiveData()
         return transcript
     }
 
@@ -59,24 +80,30 @@ class TranscriptRepository(context: Context) {
 
     fun update(transcript: Transcript) {
         box.put(transcript)
+        refreshLiveData()
     }
 
     fun delete(id: Long): Boolean {
-        return box.remove(id)
+        val result = box.remove(id)
+        refreshLiveData()
+        return result
     }
 
     fun delete(transcript: Transcript) {
         box.remove(transcript)
+        refreshLiveData()
     }
 
     fun deleteAll() {
         box.removeAll()
+        refreshLiveData()
     }
 
     fun clearContext() {
         val transcripts = box.all
         transcripts.forEach { it.excludeFromContext = true }
         box.put(transcripts)
+        refreshLiveData()
     }
 
     fun count(): Long {
