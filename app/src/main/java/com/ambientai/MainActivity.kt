@@ -13,29 +13,49 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
 import com.ambientai.core.llm.GeminiNanoTester
+import com.ambientai.data.entities.LlmInteraction
 import com.ambientai.data.entities.Transcript
+import com.ambientai.data.repositories.LlmInteractionRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
+sealed class TimelineItem {
+    abstract val timestamp: Long
+
+    data class TranscriptItem(val transcript: Transcript) : TimelineItem() {
+        override val timestamp = transcript.timestamp
+    }
+
+    data class LlmItem(val interaction: LlmInteraction) : TimelineItem() {
+        override val timestamp = interaction.timestamp
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
     private var voiceService: VoiceListeningService? = null
     private var isBound = false
     private var transcriptRepository: TranscriptRepository? = null
+    private var llmInteractionRepository: LlmInteractionRepository? = null
 
     private val dateFormat = SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault())
 
@@ -62,12 +82,12 @@ class MainActivity : ComponentActivity() {
 
         override fun onTranscriptSaved(transcript: Transcript) {
             currentTranscript = ""
-            loadTranscripts()
+            loadTimelineItems()
         }
     }
 
     private var currentTranscript by mutableStateOf("")
-    private var transcripts by mutableStateOf<List<Transcript>>(emptyList())
+    private var timelineItems by mutableStateOf<List<TimelineItem>>(emptyList())
     private var showNanoTest by mutableStateOf(false)
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -87,9 +107,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         transcriptRepository = TranscriptRepository(applicationContext)
+        llmInteractionRepository = LlmInteractionRepository(applicationContext)
 
         checkPermissionsAndStart()
-        loadTranscripts()
+        loadTimelineItems()
 
         setContent {
             MaterialTheme {
@@ -102,7 +123,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         DebugScreen(
                             currentTranscript = currentTranscript,
-                            transcripts = transcripts,
+                            timelineItems = timelineItems,
                             onTestNano = { showNanoTest = true },
                             onToggleExcludeFromContext = { transcript ->
                                 toggleExcludeFromContext(transcript)
@@ -132,7 +153,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        transcriptRepository?.close()
+        // Don't close repositories - they share the application's BoxStore
     }
 
     private fun checkPermissionsAndStart() {
@@ -157,20 +178,29 @@ class MainActivity : ComponentActivity() {
         ContextCompat.startForegroundService(this, intent)
     }
 
-    private fun loadTranscripts() {
-        transcripts = transcriptRepository?.getRecent(20) ?: emptyList()
+    private fun loadTimelineItems() {
+        val transcripts = transcriptRepository?.getRecent(20) ?: emptyList()
+        val llmInteractions = llmInteractionRepository?.getRecent(20) ?: emptyList()
+
+        val items = mutableListOf<TimelineItem>()
+        items.addAll(transcripts.map { TimelineItem.TranscriptItem(it) })
+        items.addAll(llmInteractions.map { TimelineItem.LlmItem(it) })
+
+        timelineItems = items.sortedByDescending { it.timestamp }
     }
 
     private fun toggleExcludeFromContext(transcript: Transcript) {
+        val oldValue = transcript.excludeFromContext
         transcript.excludeFromContext = !transcript.excludeFromContext
         transcriptRepository?.update(transcript)
-        loadTranscripts()
+        Log.d(TAG, "Toggled transcript ${transcript.id}: excludeFromContext ${oldValue} -> ${transcript.excludeFromContext}")
+        loadTimelineItems()
     }
 
     @Composable
     fun DebugScreen(
         currentTranscript: String,
-        transcripts: List<Transcript>,
+        timelineItems: List<TimelineItem>,
         onTestNano: () -> Unit,
         onToggleExcludeFromContext: (Transcript) -> Unit
     ) {
@@ -220,7 +250,7 @@ class MainActivity : ComponentActivity() {
             }
 
             Text(
-                text = "Recent Transcripts (${transcripts.size}) - Long press to exclude from context",
+                text = "Timeline (${timelineItems.size}) - Long press transcript to toggle context",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -229,11 +259,18 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(transcripts) { transcript ->
-                    TranscriptItem(
-                        transcript = transcript,
-                        onToggleExcludeFromContext = onToggleExcludeFromContext
-                    )
+                items(timelineItems) { item ->
+                    when (item) {
+                        is TimelineItem.TranscriptItem -> {
+                            TranscriptCard(
+                                transcript = item.transcript,
+                                onToggleExcludeFromContext = onToggleExcludeFromContext
+                            )
+                        }
+                        is TimelineItem.LlmItem -> {
+                            LlmInteractionCard(interaction = item.interaction)
+                        }
+                    }
                 }
             }
         }
@@ -241,46 +278,138 @@ class MainActivity : ComponentActivity() {
 
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    fun TranscriptItem(
+    fun TranscriptCard(
         transcript: Transcript,
         onToggleExcludeFromContext: (Transcript) -> Unit
     ) {
+        val borderColor = if (transcript.excludeFromContext) {
+            Color(0xFFE57373) // Red for excluded
+        } else {
+            Color(0xFF81C784) // Green for included
+        }
+
+        val backgroundColor = if (transcript.excludeFromContext) {
+            Color(0xFFFFF3F3) // Light red background
+        } else {
+            Color(0xFFF1F8F4) // Light green background
+        }
+
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                .border(2.dp, borderColor, RoundedCornerShape(8.dp))
                 .combinedClickable(
                     onClick = { },
                     onLongClick = { onToggleExcludeFromContext(transcript) }
                 ),
             colors = CardDefaults.cardColors(
-                containerColor = if (transcript.excludeFromContext) {
-                    Color(0xFFFFEBEE) // Light red tint for excluded
-                } else {
-                    MaterialTheme.colorScheme.surface
-                }
+                containerColor = backgroundColor
             )
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = dateFormat.format(Date(transcript.timestamp)),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (transcript.excludeFromContext) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(borderColor, RoundedCornerShape(4.dp))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Excluded",
+                            text = dateFormat.format(Date(transcript.timestamp)),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Text(
+                        text = if (transcript.excludeFromContext) "Excluded" else "Included",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = borderColor
+                    )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = transcript.text,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun LlmInteractionCard(interaction: LlmInteraction) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFFF3E5F5) // Light purple for LLM
+            )
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "🤖",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = dateFormat.format(Date(interaction.timestamp)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${interaction.latencyMs}ms",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (interaction.grade != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "⭐${interaction.grade}/5",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFFA726)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Show user prompt
+                Text(
+                    text = "Context:",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = interaction.userPrompt.take(200) + if (interaction.userPrompt.length > 200) "..." else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Show response
+                Text(
+                    text = "Response:",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = interaction.response,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

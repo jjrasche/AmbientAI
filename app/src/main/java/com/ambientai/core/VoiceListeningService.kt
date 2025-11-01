@@ -117,8 +117,7 @@ class VoiceListeningService : Service() {
         wakeWordDetector?.cleanup()
         speechRecognizer?.cleanup()
         ttsService?.cleanup()
-        transcriptRepository?.close()
-        llmInteractionRepository?.close()
+        // Don't close repositories - they share the application's BoxStore
         serviceScope.cancel()
     }
 

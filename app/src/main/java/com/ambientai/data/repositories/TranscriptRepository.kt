@@ -83,10 +83,6 @@ class TranscriptRepository(context: Context) {
         return box.count()
     }
 
-    fun close() {
-        box.store.close()
-    }
-
     /**
      * Get recent transcripts formatted for LLM context.
      * Returns oldest first (chronological order) with timestamps.

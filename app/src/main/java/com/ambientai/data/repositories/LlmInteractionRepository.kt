@@ -68,8 +68,4 @@ class LlmInteractionRepository(context: Context) {
     fun count(): Long {
         return box.count()
     }
-
-    fun close() {
-        box.store.close()
-    }
 }
