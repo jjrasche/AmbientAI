@@ -12,7 +12,9 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.ambientai.R
+import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.stt.SpeechRecognizer
+import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.core.wake.WakeWordDetector
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.TranscriptRepository
@@ -23,6 +25,8 @@ class VoiceListeningService : Service() {
     private var wakeWordDetector: WakeWordDetector? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var transcriptRepository: TranscriptRepository? = null
+    private var llmService: GroqLlmService? = null
+    private var ttsService: TextToSpeechService? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val binder = LocalBinder()
@@ -32,6 +36,15 @@ class VoiceListeningService : Service() {
         private const val TAG = "VoiceListeningService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
+
+        // Conversational triggers
+        private val ANSWER_TRIGGERS = listOf(
+            "answer me",
+            "what do you think",
+            "your thoughts",
+            "can you help",
+            "tell me"
+        )
     }
 
     interface TranscriptUpdateListener {
@@ -57,7 +70,7 @@ class VoiceListeningService : Service() {
 
         createNotificationChannel()
 
-        val notification = createNotification("Listening for wake word...")
+        val notification = createNotification("Initializing...")
 
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(
@@ -70,6 +83,8 @@ class VoiceListeningService : Service() {
         }
 
         transcriptRepository = TranscriptRepository(applicationContext)
+        llmService = GroqLlmService()
+
         initializeComponents()
     }
 
@@ -87,6 +102,7 @@ class VoiceListeningService : Service() {
 
         wakeWordDetector?.cleanup()
         speechRecognizer?.cleanup()
+        ttsService?.cleanup()
         transcriptRepository?.close()
         serviceScope.cancel()
     }
@@ -124,24 +140,41 @@ class VoiceListeningService : Service() {
     }
 
     private fun initializeComponents() {
-        try {
-            wakeWordDetector = WakeWordDetector(
-                context = applicationContext,
-                onWakeWordDetected = ::handleWakeWord
-            )
-            wakeWordDetector?.initialize()
+        serviceScope.launch {
+            try {
+                // Initialize TTS first
+                ttsService = TextToSpeechService(
+                    context = applicationContext,
+                    onError = ::handleTtsError
+                )
+                val ttsReady = ttsService?.initialize() ?: false
 
-            speechRecognizer = SpeechRecognizer(
-                context = applicationContext,
-                onPartialTranscript = ::handlePartialTranscript,
-                onTranscriptReady = ::handleTranscript,
-                onError = ::handleSttError
-            )
-            speechRecognizer?.initialize()
+                if (!ttsReady) {
+                    Log.e(TAG, "TTS initialization failed")
+                }
 
-            Log.d(TAG, "All components initialized")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize components", e)
+                // Initialize wake word detector
+                wakeWordDetector = WakeWordDetector(
+                    context = applicationContext,
+                    onWakeWordDetected = ::handleWakeWord
+                )
+                wakeWordDetector?.initialize()
+
+                // Initialize speech recognizer
+                speechRecognizer = SpeechRecognizer(
+                    context = applicationContext,
+                    onPartialTranscript = ::handlePartialTranscript,
+                    onTranscriptReady = ::handleTranscript,
+                    onError = ::handleSttError
+                )
+                speechRecognizer?.initialize()
+
+                Log.d(TAG, "All components initialized")
+                wakeWordDetector?.start()
+                updateNotification("Listening for wake word...")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize components", e)
+            }
         }
     }
 
@@ -172,13 +205,83 @@ class VoiceListeningService : Service() {
 
         listeners.forEach { it.onTranscriptSaved(transcript) }
 
-        updateNotification("Listening for wake word...")
-        wakeWordDetector?.start()
+        // Check if this triggers a conversational response
+        if (shouldRespond(text)) {
+            handleConversationalQuery()
+        } else {
+            updateNotification("Listening for wake word...")
+            wakeWordDetector?.start()
+        }
+    }
+
+    private fun shouldRespond(text: String): Boolean {
+        val lowerText = text.lowercase()
+        return ANSWER_TRIGGERS.any { trigger -> lowerText.contains(trigger) }
+    }
+
+    private fun handleConversationalQuery() {
+        serviceScope.launch {
+            try {
+                updateNotification("Thinking...")
+
+                // Get recent context (last 3 transcripts) with timestamps
+                val context = transcriptRepository?.getRecentContext(3) ?: ""
+
+                if (context.isEmpty()) {
+                    ttsService?.speak("I don't have any recent context.")
+                    updateNotification("Listening for wake word...")
+                    wakeWordDetector?.start()
+                    return@launch
+                }
+
+                // Generate response
+                val systemPrompt = "You are a helpful assistant. Provide conversational responses in 1-2 sentences."
+                val result = llmService?.generateResponse(
+                    systemPrompt = systemPrompt,
+                    userPrompt = context,
+                    temperature = 0.7f,
+                    maxTokens = 100
+                )
+
+                result?.onSuccess { response ->
+                    Log.d(TAG, "LLM response: $response")
+
+                    // Speak the response
+                    updateNotification("Speaking...")
+                    ttsService?.speak(response)
+
+                    // Save LLM response as a transcript for context
+                    val assistantTranscript = Transcript(
+                        text = "[Assistant] $response",
+                        audioFilePath = "",
+                        timestamp = System.currentTimeMillis()
+                    )
+                    transcriptRepository?.save(assistantTranscript)
+                }?.onFailure { error ->
+                    Log.e(TAG, "LLM failed", error)
+                    ttsService?.speak("Sorry, I couldn't process that.")
+                }
+
+                // Resume wake word detection
+                updateNotification("Listening for wake word...")
+                wakeWordDetector?.start()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Conversational query failed", e)
+                ttsService?.speak("Sorry, something went wrong.")
+                updateNotification("Listening for wake word...")
+                wakeWordDetector?.start()
+            }
+        }
     }
 
     private fun handleSttError(errorCode: Int) {
         Log.e(TAG, "STT error: $errorCode")
         updateNotification("Listening for wake word...")
         wakeWordDetector?.start()
+    }
+
+    private fun handleTtsError(errorCode: Int) {
+        Log.e(TAG, "TTS error: $errorCode")
     }
 }

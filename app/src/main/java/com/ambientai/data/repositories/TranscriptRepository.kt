@@ -7,6 +7,8 @@ import com.ambientai.data.entities.Transcript_
 import io.objectbox.Box
 import io.objectbox.kotlin.boxFor
 import io.objectbox.query.OrderFlags
+import java.text.SimpleDateFormat
+import java.util.*
 
 /**
  * Repository for CRUD operations on Transcript entities.
@@ -14,6 +16,7 @@ import io.objectbox.query.OrderFlags
 class TranscriptRepository(context: Context) {
 
     private val box: Box<Transcript> = AmbientAIApp.boxStore.boxFor()
+    private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
 
     fun save(transcript: Transcript): Transcript {
         box.put(transcript)
@@ -76,5 +79,18 @@ class TranscriptRepository(context: Context) {
 
     fun close() {
         box.store.close()
+    }
+
+    /**
+     * Get recent transcripts formatted for LLM context.
+     * Returns oldest first (chronological order) with timestamps.
+     */
+    fun getRecentContext(chunks: Int): String {
+        val transcripts = getRecent(chunks)
+        if (transcripts.isEmpty()) return ""
+
+        return transcripts.reversed().joinToString("\n") { transcript ->
+            "[${dateFormat.format(Date(transcript.timestamp))}] ${transcript.text}"
+        }
     }
 }
