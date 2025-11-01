@@ -16,7 +16,9 @@ import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.stt.SpeechRecognizer
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.core.wake.WakeWordDetector
+import com.ambientai.data.entities.LlmInteraction
 import com.ambientai.data.entities.Transcript
+import com.ambientai.data.repositories.LlmInteractionRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import kotlinx.coroutines.*
 
@@ -25,6 +27,7 @@ class VoiceListeningService : Service() {
     private var wakeWordDetector: WakeWordDetector? = null
     private var speechRecognizer: SpeechRecognizer? = null
     private var transcriptRepository: TranscriptRepository? = null
+    private var llmInteractionRepository: LlmInteractionRepository? = null
     private var llmService: GroqLlmService? = null
     private var ttsService: TextToSpeechService? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -45,6 +48,16 @@ class VoiceListeningService : Service() {
             "can you help",
             "tell me"
         )
+
+        // Context management triggers
+        private val CLEAR_CONTEXT_TRIGGERS = listOf(
+            "clear context",
+            "reset context",
+            "new context"
+        )
+
+        // Grade pattern: "grade that X" where X is 0-5
+        private val GRADE_PATTERN = Regex("""grade\s+that\s+(\d)""", RegexOption.IGNORE_CASE)
     }
 
     interface TranscriptUpdateListener {
@@ -83,6 +96,7 @@ class VoiceListeningService : Service() {
         }
 
         transcriptRepository = TranscriptRepository(applicationContext)
+        llmInteractionRepository = LlmInteractionRepository(applicationContext)
         llmService = GroqLlmService()
 
         initializeComponents()
@@ -104,6 +118,7 @@ class VoiceListeningService : Service() {
         speechRecognizer?.cleanup()
         ttsService?.cleanup()
         transcriptRepository?.close()
+        llmInteractionRepository?.close()
         serviceScope.cancel()
     }
 
@@ -199,18 +214,22 @@ class VoiceListeningService : Service() {
         val transcript = Transcript(
             text = text,
             audioFilePath = "",
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
+            excludeFromContext = false
         )
         transcriptRepository?.save(transcript)
 
         listeners.forEach { it.onTranscriptSaved(transcript) }
 
-        // Check if this triggers a conversational response
-        if (shouldRespond(text)) {
-            handleConversationalQuery()
-        } else {
-            updateNotification("Listening for wake word...")
-            wakeWordDetector?.start()
+        // Check for command triggers
+        when {
+            shouldClearContext(text) -> handleClearContext()
+            shouldGrade(text) -> handleGrade(text)
+            shouldRespond(text) -> handleConversationalQuery()
+            else -> {
+                updateNotification("Listening for wake word...")
+                wakeWordDetector?.start()
+            }
         }
     }
 
@@ -219,15 +238,75 @@ class VoiceListeningService : Service() {
         return ANSWER_TRIGGERS.any { trigger -> lowerText.contains(trigger) }
     }
 
+    private fun shouldClearContext(text: String): Boolean {
+        val lowerText = text.lowercase()
+        return CLEAR_CONTEXT_TRIGGERS.any { trigger -> lowerText.contains(trigger) }
+    }
+
+    private fun shouldGrade(text: String): Boolean {
+        return GRADE_PATTERN.containsMatchIn(text)
+    }
+
+    private fun handleClearContext() {
+        serviceScope.launch {
+            try {
+                transcriptRepository?.clearContext()
+                Log.d(TAG, "Context cleared")
+                ttsService?.speak("Context cleared.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear context", e)
+                ttsService?.speak("Failed to clear context.")
+            }
+
+            updateNotification("Listening for wake word...")
+            wakeWordDetector?.start()
+        }
+    }
+
+    private fun handleGrade(text: String) {
+        serviceScope.launch {
+            try {
+                val match = GRADE_PATTERN.find(text)
+                val gradeStr = match?.groupValues?.get(1)
+                val grade = gradeStr?.toIntOrNull()
+
+                if (grade == null || grade !in 0..5) {
+                    Log.w(TAG, "Invalid grade: $gradeStr")
+                    ttsService?.speak("Grade must be between 0 and 5.")
+                    updateNotification("Listening for wake word...")
+                    wakeWordDetector?.start()
+                    return@launch
+                }
+
+                val mostRecent = llmInteractionRepository?.getMostRecent()
+                if (mostRecent == null) {
+                    Log.w(TAG, "No LLM interaction to grade")
+                    ttsService?.speak("No response to grade.")
+                } else {
+                    llmInteractionRepository?.updateGrade(mostRecent.id, grade)
+                    Log.d(TAG, "Graded interaction ${mostRecent.id} as $grade")
+                    ttsService?.speak("Graded $grade out of 5.")
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to grade response", e)
+                ttsService?.speak("Failed to grade response.")
+            }
+
+            updateNotification("Listening for wake word...")
+            wakeWordDetector?.start()
+        }
+    }
+
     private fun handleConversationalQuery() {
         serviceScope.launch {
             try {
                 updateNotification("Thinking...")
 
                 // Get recent context (last 3 transcripts) with timestamps
-                val context = transcriptRepository?.getRecentContext(3) ?: ""
+                val userPrompt = transcriptRepository?.getRecentContext(3) ?: ""
 
-                if (context.isEmpty()) {
+                if (userPrompt.isEmpty()) {
                     ttsService?.speak("I don't have any recent context.")
                     updateNotification("Listening for wake word...")
                     wakeWordDetector?.start()
@@ -236,27 +315,39 @@ class VoiceListeningService : Service() {
 
                 // Generate response
                 val systemPrompt = "You are a helpful assistant. Provide conversational responses in 1-2 sentences."
+                val temperature = 0.7f
+                val maxTokens = 100
+                val startTime = System.currentTimeMillis()
+
                 val result = llmService?.generateResponse(
                     systemPrompt = systemPrompt,
-                    userPrompt = context,
-                    temperature = 0.7f,
-                    maxTokens = 100
+                    userPrompt = userPrompt,
+                    temperature = temperature,
+                    maxTokens = maxTokens
                 )
 
                 result?.onSuccess { response ->
+                    val latency = System.currentTimeMillis() - startTime
                     Log.d(TAG, "LLM response: $response")
+
+                    // Save complete LLM interaction to database
+                    val interaction = LlmInteraction(
+                        systemPrompt = systemPrompt,
+                        userPrompt = userPrompt,
+                        response = response,
+                        timestamp = System.currentTimeMillis(),
+                        latencyMs = latency,
+                        model = "llama-3.1-8b-instant",
+                        temperature = temperature,
+                        maxTokens = maxTokens,
+                        grade = null
+                    )
+                    llmInteractionRepository?.save(interaction)
 
                     // Speak the response
                     updateNotification("Speaking...")
                     ttsService?.speak(response)
 
-                    // Save LLM response as a transcript for context
-                    val assistantTranscript = Transcript(
-                        text = "[Assistant] $response",
-                        audioFilePath = "",
-                        timestamp = System.currentTimeMillis()
-                    )
-                    transcriptRepository?.save(assistantTranscript)
                 }?.onFailure { error ->
                     Log.e(TAG, "LLM failed", error)
                     ttsService?.speak("Sorry, I couldn't process that.")

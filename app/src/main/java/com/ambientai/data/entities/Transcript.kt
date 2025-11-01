@@ -12,5 +12,6 @@ data class Transcript(
     @Id var id: Long = 0,
     var text: String,
     var audioFilePath: String,
-    var timestamp: Long
+    var timestamp: Long,
+    var excludeFromContext: Boolean = false
 )

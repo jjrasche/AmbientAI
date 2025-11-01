@@ -73,6 +73,12 @@ class TranscriptRepository(context: Context) {
         box.removeAll()
     }
 
+    fun clearContext() {
+        val transcripts = box.all
+        transcripts.forEach { it.excludeFromContext = true }
+        box.put(transcripts)
+    }
+
     fun count(): Long {
         return box.count()
     }
@@ -84,9 +90,15 @@ class TranscriptRepository(context: Context) {
     /**
      * Get recent transcripts formatted for LLM context.
      * Returns oldest first (chronological order) with timestamps.
+     * Filters out transcripts marked as excludeFromContext.
      */
     fun getRecentContext(chunks: Int): String {
-        val transcripts = getRecent(chunks)
+        val transcripts = box.query()
+            .equal(Transcript_.excludeFromContext, false)
+            .order(Transcript_.timestamp, OrderFlags.DESCENDING)
+            .build()
+            .find(0, chunks.toLong())
+
         if (transcripts.isEmpty()) return ""
 
         return transcripts.reversed().joinToString("\n") { transcript ->

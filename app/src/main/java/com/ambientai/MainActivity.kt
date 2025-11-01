@@ -12,12 +12,15 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
@@ -100,7 +103,10 @@ class MainActivity : ComponentActivity() {
                         DebugScreen(
                             currentTranscript = currentTranscript,
                             transcripts = transcripts,
-                            onTestNano = { showNanoTest = true }
+                            onTestNano = { showNanoTest = true },
+                            onToggleExcludeFromContext = { transcript ->
+                                toggleExcludeFromContext(transcript)
+                            }
                         )
                     }
                 }
@@ -155,11 +161,18 @@ class MainActivity : ComponentActivity() {
         transcripts = transcriptRepository?.getRecent(20) ?: emptyList()
     }
 
+    private fun toggleExcludeFromContext(transcript: Transcript) {
+        transcript.excludeFromContext = !transcript.excludeFromContext
+        transcriptRepository?.update(transcript)
+        loadTranscripts()
+    }
+
     @Composable
     fun DebugScreen(
         currentTranscript: String,
         transcripts: List<Transcript>,
-        onTestNano: () -> Unit
+        onTestNano: () -> Unit,
+        onToggleExcludeFromContext: (Transcript) -> Unit
     ) {
         Column(
             modifier = Modifier
@@ -207,7 +220,7 @@ class MainActivity : ComponentActivity() {
             }
 
             Text(
-                text = "Recent Transcripts (${transcripts.size})",
+                text = "Recent Transcripts (${transcripts.size}) - Long press to exclude from context",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -217,23 +230,54 @@ class MainActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(transcripts) { transcript ->
-                    TranscriptItem(transcript = transcript)
+                    TranscriptItem(
+                        transcript = transcript,
+                        onToggleExcludeFromContext = onToggleExcludeFromContext
+                    )
                 }
             }
         }
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    fun TranscriptItem(transcript: Transcript) {
+    fun TranscriptItem(
+        transcript: Transcript,
+        onToggleExcludeFromContext: (Transcript) -> Unit
+    ) {
         Card(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = { onToggleExcludeFromContext(transcript) }
+                ),
+            colors = CardDefaults.cardColors(
+                containerColor = if (transcript.excludeFromContext) {
+                    Color(0xFFFFEBEE) // Light red tint for excluded
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+            )
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = dateFormat.format(Date(transcript.timestamp)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = dateFormat.format(Date(transcript.timestamp)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (transcript.excludeFromContext) {
+                        Text(
+                            text = "Excluded",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = transcript.text,
