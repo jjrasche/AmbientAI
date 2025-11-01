@@ -24,6 +24,8 @@ android {
         file("../local.properties").inputStream().use { properties.load(it) }
         buildConfigField("String", "PICOVOICE_ACCESS_KEY",
             "\"${properties.getProperty("picovoice.accessKey", "")}\"")
+        buildConfigField("String", "GROQ_API_KEY",
+            "\"${properties.getProperty("groq.apiKey", "")}\"")
     }
 
     buildTypes {

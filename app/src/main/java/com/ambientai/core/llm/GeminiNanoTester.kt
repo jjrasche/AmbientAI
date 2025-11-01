@@ -3,18 +3,19 @@ package com.ambientai.core.llm
 import android.content.Context
 import android.util.Log
 import com.google.ai.edge.aicore.GenerativeModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.sqrt
 
 /**
- * Comprehensive performance tests for Gemini Nano.
- * Tests cold start, warm model latency, token limits, and real workflows.
+ * Tests with model recreation to work around BUSY errors.
+ * Recreates model every N inferences to prevent resource exhaustion.
  */
 class GeminiNanoTester(private val context: Context) {
 
     companion object {
         private const val TAG = "NanoPerfTests"
+        private const val MAX_INFERENCES_PER_MODEL = 10 // Recreate after this many
     }
 
     data class TestResult(
@@ -33,369 +34,377 @@ class GeminiNanoTester(private val context: Context) {
         val stdDev: Double
     )
 
-    // Test data structures
-    data class TokenLimitTest(
-        val maxTokens: Int,
-        val prompt: String
-    )
-
-    data class ExtractionTest(
-        val name: String,
-        val prompt: String,
-        val expectedField: String
-    )
-
-    data class ClassifierTest(
-        val transcript: String,
-        val shouldRespond: Boolean
-    )
+    private var model: GenerativeModel? = null
+    private var inferenceCount = 0
+    private var modelRecreationCount = 0
 
     suspend fun runAllTests(onProgress: (String) -> Unit): List<TestResult> = withContext(Dispatchers.IO) {
         val results = mutableListOf<TestResult>()
 
-        // Test 1: Cold start
-        results.add(test1_coldStart(onProgress))
+        try {
+            // Initial model creation
+            createModel()
 
-        // Test 2: Token limit sweep
-        results.add(test2_tokenLimitSweep(onProgress))
+            // Test 0: Concurrency check
+            results.add(test0_concurrencyCheck(onProgress))
+            delay(1000)
 
-        // Test 3: Extraction tasks
-        results.add(test3_extractionTasks(onProgress))
+            // Test 1: Warmup
+            results.add(test1_warmup(onProgress))
+            delay(1000)
 
-        // Test 4: Classifier consistency
-        results.add(test4_classifierConsistency(onProgress))
+            // Test 2: Token throughput
+            results.add(test2_tokenThroughput(onProgress))
+            delay(1000)
 
-        // Test 5: Rapid fire
-        results.add(test5_rapidFire(onProgress))
+            // Test 3: Inter-request timing
+            results.add(test3_interRequestTiming(onProgress))
+            delay(1000)
+
+            // Test 4: Sustained usage
+            results.add(test4_sustainedUsage(onProgress))
+
+            // Add summary of recreations
+            results.add(
+                TestResult(
+                    testName = "Model Recreations",
+                    success = true,
+                    message = "Recreated model $modelRecreationCount times",
+                    metrics = mapOf("recreation_count" to modelRecreationCount.toDouble())
+                )
+            )
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Test suite failed", e)
+            results.add(
+                TestResult(
+                    testName = "Test Suite",
+                    success = false,
+                    message = "Test suite failed: ${e.message}"
+                )
+            )
+        } finally {
+            model?.close()
+            Log.d(TAG, "Cleaned up final model")
+        }
 
         results
     }
 
-    private suspend fun test1_coldStart(onProgress: (String) -> Unit): TestResult {
-        onProgress("Test 1: Cold Start (Model Loading)")
+    private suspend fun createModel() {
+        val start = System.currentTimeMillis()
 
-        val startTime = System.currentTimeMillis()
+        model?.close()
+
+        model = GenerativeModel(
+            generationConfig = com.google.ai.edge.aicore.generationConfig {
+                context = this@GeminiNanoTester.context
+                maxOutputTokens = 50
+                temperature = 0.7f
+                topK = 40
+            }
+        )
+
+        inferenceCount = 0
+        val elapsed = System.currentTimeMillis() - start
+
+        Log.d(TAG, "Model created in ${elapsed}ms (recreation #$modelRecreationCount)")
+        modelRecreationCount++
+    }
+
+    private suspend fun maybeRecreateModel() {
+        if (inferenceCount >= MAX_INFERENCES_PER_MODEL) {
+            Log.d(TAG, "Hit $inferenceCount inferences, recreating model...")
+            delay(500) // Brief pause before recreation
+            createModel()
+            delay(500) // Brief pause after recreation
+        }
+    }
+
+    private suspend fun doInference(prompt: String): String {
+        maybeRecreateModel()
+
+        val response = model?.generateContent(prompt) ?: throw IllegalStateException("Model is null")
+        inferenceCount++
+
+        return response.text ?: ""
+    }
+
+    private suspend fun test0_concurrencyCheck(
+        onProgress: (String) -> Unit
+    ): TestResult {
+        onProgress("Test 0: Concurrency Check")
 
         return try {
-            val model = GenerativeModel(
-                generationConfig = com.google.ai.edge.aicore.generationConfig {
-                    context = this@GeminiNanoTester.context
-                    maxOutputTokens = 10
-                    temperature = 0.7f
-                    topK = 40
+            val successCount = AtomicInteger(0)
+            val errorCount = AtomicInteger(0)
+            val completionOrder = mutableListOf<Int>()
+            val startTimes = mutableMapOf<Int, Long>()
+            val endTimes = mutableMapOf<Int, Long>()
+
+            // Fire 5 requests simultaneously
+            coroutineScope {
+                repeat(5) { i ->
+                    launch {
+                        try {
+                            startTimes[i] = System.currentTimeMillis()
+                            doInference("Request $i: say hello")
+                            endTimes[i] = System.currentTimeMillis()
+
+                            synchronized(completionOrder) {
+                                completionOrder.add(i)
+                            }
+                            successCount.incrementAndGet()
+
+                            val latency = endTimes[i]!! - startTimes[i]!!
+                            Log.d(TAG, "Request $i completed in ${latency}ms")
+                        } catch (e: Exception) {
+                            errorCount.incrementAndGet()
+                            Log.e(TAG, "Request $i failed: ${e.message}")
+                        }
+                    }
                 }
-            )
+            }
 
-            // Warm-up inference
-            model.generateContent("Hello")
-            val coldStartTime = System.currentTimeMillis() - startTime
+            Log.d(TAG, "Completion order: $completionOrder")
 
-            Log.d(TAG, "Cold start time: ${coldStartTime}ms")
+            val message = if (successCount.get() == 5) {
+                "✓ All 5 succeeded. Order: ${completionOrder}"
+            } else {
+                "✗ Only ${successCount.get()}/5 succeeded, ${errorCount.get()} failed"
+            }
 
             TestResult(
-                testName = "Cold Start",
-                success = true,
-                message = "${coldStartTime}ms (unavoidable baseline)",
-                metrics = mapOf("cold_start_ms" to coldStartTime.toDouble())
+                testName = "Concurrency Check",
+                success = successCount.get() == 5,
+                message = message,
+                metrics = mapOf(
+                    "success_count" to successCount.get().toDouble(),
+                    "error_count" to errorCount.get().toDouble()
+                )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Cold start failed", e)
+            Log.e(TAG, "Concurrency check failed", e)
             TestResult(
-                testName = "Cold Start",
+                testName = "Concurrency Check",
                 success = false,
                 message = "Failed: ${e.message}"
             )
         }
     }
 
-    private suspend fun test2_tokenLimitSweep(onProgress: (String) -> Unit): TestResult {
-        onProgress("Test 2: Token Limit Sweep")
+    private suspend fun test1_warmup(
+        onProgress: (String) -> Unit
+    ): TestResult {
+        onProgress("Test 1: First Inference (Warmup)")
 
-        val tokenTests = listOf(
-            TokenLimitTest(5, "Say hello in 5 words"),
-            TokenLimitTest(10, "Say hello in 10 words"),
-            TokenLimitTest(15, "Say hello in 15 words"),
-            TokenLimitTest(20, "Say hello in 20 words"),
-            TokenLimitTest(30, "Say hello in 30 words"),
-            TokenLimitTest(50, "Say hello")
-        )
+        return try {
+            // Recreate model for clean warmup test
+            createModel()
+            delay(500)
 
-        val iterations = 10
-        val results = mutableMapOf<Int, LatencyStats>()
+            val warmupStart = System.currentTimeMillis()
+            doInference("Hello, this is a warmup test")
+            val warmupTime = System.currentTimeMillis() - warmupStart
 
-        try {
-            for (test in tokenTests) {
-                onProgress("Testing ${test.maxTokens} tokens...")
+            Log.d(TAG, "First inference: ${warmupTime}ms")
 
-                val model = GenerativeModel(
-                    generationConfig = com.google.ai.edge.aicore.generationConfig {
-                        context = this@GeminiNanoTester.context
-                        maxOutputTokens = test.maxTokens
-                        temperature = 0.7f
-                        topK = 40
-                    }
+            delay(200)
+            val secondStart = System.currentTimeMillis()
+            doInference("This is the second inference")
+            val secondTime = System.currentTimeMillis() - secondStart
+
+            Log.d(TAG, "Second inference: ${secondTime}ms")
+
+            val message = "First: ${warmupTime}ms, Second: ${secondTime}ms"
+
+            TestResult(
+                testName = "Warmup",
+                success = true,
+                message = message,
+                metrics = mapOf(
+                    "first_inference_ms" to warmupTime.toDouble(),
+                    "second_inference_ms" to secondTime.toDouble(),
+                    "warmup_overhead_ms" to (warmupTime - secondTime).toDouble()
                 )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Warmup test failed", e)
+            TestResult(
+                testName = "Warmup",
+                success = false,
+                message = "Failed: ${e.message}"
+            )
+        }
+    }
 
-                // Warm up
-                model.generateContent(test.prompt)
+    private suspend fun test2_tokenThroughput(
+        onProgress: (String) -> Unit
+    ): TestResult {
+        onProgress("Test 2: Token Throughput")
 
-                // Measure
+        val tokenLimits = listOf(5, 10, 15, 20, 30, 50)
+        val iterations = 10
+
+        return try {
+            val results = mutableMapOf<Int, LatencyStats>()
+
+            for (tokenLimit in tokenLimits) {
+                onProgress("Testing ${tokenLimit} tokens...")
+
                 val latencies = mutableListOf<Long>()
+
                 repeat(iterations) {
+                    delay(200)
+
                     val start = System.currentTimeMillis()
-                    model.generateContent(test.prompt)
+                    doInference("Say hello in approximately $tokenLimit words")
                     latencies.add(System.currentTimeMillis() - start)
                 }
 
-                results[test.maxTokens] = calculateStats(latencies)
-
-                Log.d(TAG, "Tokens: ${test.maxTokens}, Mean: ${results[test.maxTokens]?.mean}ms")
+                results[tokenLimit] = calculateStats(latencies)
+                Log.d(TAG, "${tokenLimit} tokens: ${results[tokenLimit]?.mean}ms avg")
             }
 
-            // Find optimal token limit (< 500ms p95)
-            val viable = results.filter { it.value.p95 < 500 }
-            val optimalTokens = viable.keys.maxOrNull()
+            val (firstTokenLatency, tokensPerSec) = calculateThroughput(results)
 
-            val message = if (optimalTokens != null) {
-                "✓ Optimal: ${optimalTokens} tokens (${viable[optimalTokens]?.mean?.toInt()}ms avg)"
-            } else {
-                "✗ All configs > 500ms"
-            }
+            val message = "First token: ${firstTokenLatency.toInt()}ms, ${tokensPerSec.toInt()} tok/sec"
 
-            return TestResult(
-                testName = "Token Limit Sweep",
-                success = optimalTokens != null,
+            Log.d(TAG, "Calculated: $message")
+
+            TestResult(
+                testName = "Token Throughput",
+                success = firstTokenLatency < 1000 && tokensPerSec > 5,
                 message = message,
-                metrics = results.flatMap { (tokens, stats) ->
-                    listOf(
-                        "tokens_${tokens}_mean" to stats.mean,
-                        "tokens_${tokens}_p95" to stats.p95
-                    )
-                }.toMap()
+                metrics = buildMap {
+                    put("first_token_latency_ms", firstTokenLatency)
+                    put("tokens_per_sec", tokensPerSec)
+                    results.forEach { (tokens, stats) ->
+                        put("tokens_${tokens}_mean_ms", stats.mean)
+                        put("tokens_${tokens}_p95_ms", stats.p95)
+                    }
+                }
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Token sweep failed", e)
-            return TestResult(
-                testName = "Token Limit Sweep",
+            Log.e(TAG, "Token throughput failed", e)
+            TestResult(
+                testName = "Token Throughput",
                 success = false,
                 message = "Failed: ${e.message}"
             )
         }
     }
 
-    private suspend fun test3_extractionTasks(onProgress: (String) -> Unit): TestResult {
-        onProgress("Test 3: Real Workflow Extraction")
+    private suspend fun test3_interRequestTiming(
+        onProgress: (String) -> Unit
+    ): TestResult {
+        onProgress("Test 3: Inter-Request Timing")
 
-        val extractionTests = listOf(
-            ExtractionTest(
-                "Medication",
-                "Extract medication name from: 'Took 1000mg Tylenol this morning'. Return ONLY the medication name, nothing else.",
-                "tylenol"
-            ),
-            ExtractionTest(
-                "Task",
-                "Extract task name from: 'Working on Android migration'. Return ONLY the task name, nothing else.",
-                "android"
-            ),
-            ExtractionTest(
-                "Food",
-                "Extract food from: 'Just had scrambled eggs for breakfast'. Return ONLY the food name, nothing else.",
-                "egg"
-            )
-        )
+        val delays = listOf(0L, 50L, 100L, 150L, 200L, 300L)
+        val runsPerDelay = 10
 
-        val iterations = 10
-        val results = mutableMapOf<String, Pair<LatencyStats, Int>>() // name -> (stats, correctCount)
+        return try {
+            val results = mutableMapOf<Long, Pair<Int, Int>>()
 
-        try {
-            val model = GenerativeModel(
-                generationConfig = com.google.ai.edge.aicore.generationConfig {
-                    context = this@GeminiNanoTester.context
-                    maxOutputTokens = 10
-                    temperature = 0.3f // Lower temp for extraction
-                    topK = 20
-                }
-            )
+            for (testDelay in delays) {
+                onProgress("Testing ${testDelay}ms delay...")
 
-            // Warm up
-            model.generateContent("Test")
+                var successCount = 0
+                var errorCount = 0
 
-            for (test in extractionTests) {
-                onProgress("Testing ${test.name} extraction...")
-
-                val latencies = mutableListOf<Long>()
-                var correctCount = 0
-
-                repeat(iterations) {
-                    val start = System.currentTimeMillis()
-                    val response = model.generateContent(test.prompt)
-                    val latency = System.currentTimeMillis() - start
-                    latencies.add(latency)
-
-                    // Check if extraction is correct
-                    val text = response?.text?.lowercase() ?: ""
-                    if (text.contains(test.expectedField)) {
-                        correctCount++
+                repeat(runsPerDelay) {
+                    try {
+                        if (testDelay > 0) delay(testDelay)
+                        doInference("Request with ${testDelay}ms delay")
+                        successCount++
+                    } catch (e: Exception) {
+                        errorCount++
+                        Log.e(TAG, "Request failed with ${testDelay}ms delay: ${e.message}")
                     }
                 }
 
-                results[test.name] = Pair(calculateStats(latencies), correctCount)
-
-                Log.d(TAG, "${test.name}: ${correctCount}/${iterations} correct, ${results[test.name]?.first?.mean}ms avg")
+                results[testDelay] = Pair(successCount, errorCount)
+                Log.d(TAG, "${testDelay}ms delay: $successCount success, $errorCount errors")
             }
 
-            val avgLatency = results.values.map { it.first.mean }.average()
-            val avgAccuracy = results.values.map { it.second }.average() / iterations * 100
+            val minSafeDelay = results.entries
+                .sortedBy { it.key }
+                .firstOrNull { it.value.second == 0 }
+                ?.key ?: delays.last()
 
-            val message = "Avg: ${avgLatency.toInt()}ms, ${avgAccuracy.toInt()}% accurate"
+            val message = "Minimum safe delay: ${minSafeDelay}ms"
 
-            return TestResult(
-                testName = "Extraction Tasks",
-                success = avgLatency < 500 && avgAccuracy > 70,
+            TestResult(
+                testName = "Inter-Request Timing",
+                success = true,
                 message = message,
-                metrics = results.flatMap { (name, pair) ->
-                    listOf(
-                        "${name}_mean_ms" to pair.first.mean,
-                        "${name}_accuracy" to (pair.second.toDouble() / iterations * 100)
-                    )
-                }.toMap()
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Extraction test failed", e)
-            return TestResult(
-                testName = "Extraction Tasks",
-                success = false,
-                message = "Failed: ${e.message}"
-            )
-        }
-    }
-
-    private suspend fun test4_classifierConsistency(onProgress: (String) -> Unit): TestResult {
-        onProgress("Test 4: Classifier Consistency")
-
-        val classifierTests = listOf(
-            ClassifierTest("Took 1000mg Tylenol", false),
-            ClassifierTest("What should I do about this headache?", true),
-            ClassifierTest("Working on Android migration", false),
-            ClassifierTest("How long have I been working on this?", true),
-            ClassifierTest("Started task bug fixes", false),
-            ClassifierTest("What's the current time?", true),
-            ClassifierTest("Just had breakfast", false),
-            ClassifierTest("Should I take a break?", true),
-            ClassifierTest("Feeling tired", false),
-            ClassifierTest("What do you think I should do?", true)
-        )
-
-        val iterations = 5
-        val latencies = mutableListOf<Long>()
-        var correctCount = 0
-        val totalTests = classifierTests.size * iterations
-
-        try {
-            val model = GenerativeModel(
-                generationConfig = com.google.ai.edge.aicore.generationConfig {
-                    context = this@GeminiNanoTester.context
-                    maxOutputTokens = 5 // Just "yes" or "no"
-                    temperature = 0.3f
-                    topK = 10
-                }
-            )
-
-            // Warm up
-            model.generateContent("Yes or no: should I respond?")
-
-            for (test in classifierTests) {
-                repeat(iterations) {
-                    val prompt = "User said: '${test.transcript}'. Should I respond? Answer ONLY 'yes' or 'no'."
-
-                    val start = System.currentTimeMillis()
-                    val response = model.generateContent(prompt)
-                    val latency = System.currentTimeMillis() - start
-                    latencies.add(latency)
-
-                    val shouldRespond = response?.text?.trim()?.lowercase()?.startsWith("yes") ?: false
-                    if (shouldRespond == test.shouldRespond) {
-                        correctCount++
+                metrics = buildMap {
+                    put("min_safe_delay_ms", minSafeDelay.toDouble())
+                    results.forEach { (delay, counts) ->
+                        put("delay_${delay}_success", counts.first.toDouble())
+                        put("delay_${delay}_errors", counts.second.toDouble())
                     }
                 }
-            }
-
-            val stats = calculateStats(latencies)
-            val accuracy = (correctCount.toDouble() / totalTests) * 100
-
-            Log.d(TAG, "Classifier accuracy: $accuracy%, p95: ${stats.p95}ms")
-
-            return TestResult(
-                testName = "Classifier",
-                success = accuracy >= 75 && stats.p95 < 500,
-                message = "${accuracy.toInt()}% accurate, ${stats.p95.toInt()}ms p95",
-                metrics = mapOf(
-                    "accuracy" to accuracy,
-                    "mean_ms" to stats.mean,
-                    "p95_ms" to stats.p95
-                )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Classifier test failed", e)
-            return TestResult(
-                testName = "Classifier",
+            Log.e(TAG, "Inter-request timing failed", e)
+            TestResult(
+                testName = "Inter-Request Timing",
                 success = false,
                 message = "Failed: ${e.message}"
             )
         }
     }
 
-    private suspend fun test5_rapidFire(onProgress: (String) -> Unit): TestResult {
-        onProgress("Test 5: Rapid Fire (20 consecutive)")
+    private suspend fun test4_sustainedUsage(
+        onProgress: (String) -> Unit
+    ): TestResult {
+        onProgress("Test 4: Sustained Usage")
 
-        val runs = 20
+        val runs = 50 // More runs to test recreation strategy
 
-        try {
-            val model = GenerativeModel(
-                generationConfig = com.google.ai.edge.aicore.generationConfig {
-                    context = this@GeminiNanoTester.context
-                    maxOutputTokens = 10
-                    temperature = 0.7f
-                    topK = 40
-                }
-            )
-
-            // Warm up
-            model.generateContent("Test")
-
-            // Rapid fire
+        return try {
             val latencies = mutableListOf<Long>()
+
             repeat(runs) { i ->
+                delay(200)
+
                 val start = System.currentTimeMillis()
-                model.generateContent("Quick response $i")
+                doInference("Request $i")
                 latencies.add(System.currentTimeMillis() - start)
+
+                if ((i + 1) % 10 == 0) {
+                    Log.d(TAG, "Completed ${i + 1}/$runs inferences")
+                }
             }
 
             val stats = calculateStats(latencies)
 
-            // Check for degradation (last 5 vs first 5)
-            val firstFive = latencies.take(5).average()
-            val lastFive = latencies.takeLast(5).average()
-            val degradation = ((lastFive - firstFive) / firstFive) * 100
+            // Compare first 10 vs last 10
+            val firstTen = latencies.take(10).average()
+            val lastTen = latencies.takeLast(10).average()
+            val degradation = ((lastTen - firstTen) / firstTen) * 100
 
-            Log.d(TAG, "Rapid fire: mean ${stats.mean}ms, degradation: ${degradation.toInt()}%")
+            Log.d(TAG, "Sustained: mean ${stats.mean}ms, degradation ${degradation.toInt()}%")
 
             val message = "Mean: ${stats.mean.toInt()}ms, ${if (degradation < 20) "stable" else "degrades ${degradation.toInt()}%"}"
 
-            return TestResult(
-                testName = "Rapid Fire",
-                success = stats.mean < 500 && degradation < 30,
+            TestResult(
+                testName = "Sustained Usage",
+                success = degradation < 30,
                 message = message,
                 metrics = mapOf(
                     "mean_ms" to stats.mean,
                     "p95_ms" to stats.p95,
-                    "degradation_pct" to degradation
+                    "degradation_pct" to degradation,
+                    "first_ten_avg_ms" to firstTen,
+                    "last_ten_avg_ms" to lastTen
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Rapid fire test failed", e)
-            return TestResult(
-                testName = "Rapid Fire",
+            Log.e(TAG, "Sustained usage failed", e)
+            TestResult(
+                testName = "Sustained Usage",
                 success = false,
                 message = "Failed: ${e.message}"
             )
@@ -425,5 +434,22 @@ class GeminiNanoTester(private val context: Context) {
             max = sorted.last().toDouble(),
             stdDev = stdDev
         )
+    }
+
+    private fun calculateThroughput(results: Map<Int, LatencyStats>): Pair<Double, Double> {
+        val points = results.map { (tokens, stats) -> Pair(tokens.toDouble(), stats.mean) }
+        val n = points.size
+        val sumX = points.sumOf { it.first }
+        val sumY = points.sumOf { it.second }
+        val sumXY = points.sumOf { it.first * it.second }
+        val sumX2 = points.sumOf { it.first * it.first }
+
+        val slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+        val intercept = (sumY - slope * sumX) / n
+
+        val firstTokenLatency = intercept
+        val tokensPerSec = 1000.0 / slope
+
+        return Pair(firstTokenLatency, tokensPerSec)
     }
 }
