@@ -8,7 +8,7 @@ import org.json.JSONObject
  * Actions for task management in workflows.
  * Wraps TaskRepository for workflow execution.
  */
-class TaskActions(context: Context) {
+class TaskManager(context: Context) {
 
     private val repo = TaskRepository(context)
 

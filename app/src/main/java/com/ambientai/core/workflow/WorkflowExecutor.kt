@@ -3,6 +3,7 @@ package com.ambientai.workflow
 import android.content.Context
 import android.util.Log
 import com.ambientai.core.llm.GroqLlmService
+import com.ambientai.core.task.TaskManager
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.entities.ActionExecution
@@ -123,41 +124,10 @@ class WorkflowExecutor(private val context: Context) {
             val resolvedInput = resolveVariables(inputJson, context)
 
             // 2. Dispatch to appropriate service based on action name
-            val result = when (actionName) {
-                "buffer.getRecentTranscript" -> {
-                    val chunks = resolvedInput.optInt("chunks", 3)
-                    transcriptRepo.getRecentContext(chunks)
-                }
-
-                "llm.prompt" -> {
-                    val systemPrompt = resolvedInput.getString("system_prompt")
-                    val userPrompt = resolvedInput.getString("user_prompt")
-                    val temperature = resolvedInput.optDouble("temperature", 0.7).toFloat()
-                    val maxTokens = resolvedInput.optInt("max_tokens", 256)
-
-                    val llmResult = llmService.generateResponse(
-                        systemPrompt = systemPrompt,
-                        userPrompt = userPrompt,
-                        temperature = temperature,
-                        maxTokens = maxTokens
-                    )
-                    llmResult.getOrThrow()
-                }
-
-                "tts.speak" -> {
-                    val text = resolvedInput.getString("text")
-                    ensureTtsInitialized()
-                    ttsService?.speak(text)
-                    null // TTS has no return value
-                }
-
-                "json.parse" -> {
-                    val text = resolvedInput.getString("text")
-                    // TODO: Validate against schema if provided
-                    JSONObject(text)
-                }
-
-                else -> throw IllegalArgumentException("Unknown action: $actionName")
+            val result = when (actionName.substringBefore(".")) {
+                "task" -> TaskManager.execute(actionName, resolvedInput)
+//                "llm" -> llmActions.execute(actionName, resolvedInput)
+                else -> throw UnknownActionException(actionName)
             }
 
             val latency = System.currentTimeMillis() - startTime
