@@ -32,7 +32,7 @@ class SpeechRecognizer(
 
     companion object {
         private const val TAG = "SpeechRecognizer"
-        private const val PAUSE_THRESHOLD_MS = 2000L
+        private const val PAUSE_THRESHOLD_MS = 5000L
     }
 
     fun initialize() {
