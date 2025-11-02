@@ -236,23 +236,266 @@ class WorkflowExecutor(private val context: Context) {
 
     /**
      * Replace $variables in JSON input with actual values from context.
+     * Supports nested access: $var.nested.path
+     * Throws MissingVariableException if variable doesn't exist.
      */
     private fun resolveVariables(input: JSONObject, context: WorkflowExecutionContext): JSONObject {
-        // TODO: Walk JSON tree, replace "$varName" strings with context.variables["varName"]
-        // Handle {{NOW}}, {{UUID}} templates
-        // For MVP, just return input as-is
-        return input
+        val result = JSONObject()
+
+        input.keys().forEach { key ->
+            val value = input.get(key)
+            result.put(key, resolveValue(value, context))
+        }
+
+        return result
     }
+
+    private fun resolveValue(value: Any, context: WorkflowExecutionContext): Any {
+        return when (value) {
+            is String -> resolveString(value, context)
+            is JSONObject -> resolveVariables(value, context)
+            is JSONArray -> resolveArray(value, context)
+            else -> value
+        }
+    }
+
+    private fun resolveArray(array: JSONArray, context: WorkflowExecutionContext): JSONArray {
+        val result = JSONArray()
+        for (i in 0 until array.length()) {
+            result.put(resolveValue(array.get(i), context))
+        }
+        return result
+    }
+
+    private fun resolveString(str: String, context: WorkflowExecutionContext): Any {
+        // Find all $variable or $variable.path.to.thing patterns
+        val pattern = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""")
+
+        val matches = pattern.findAll(str).toList()
+
+        if (matches.isEmpty()) return str
+
+        // If entire string is a single variable reference, return the actual value (preserve type)
+        if (matches.size == 1 && matches[0].value == str) {
+            val path = matches[0].groupValues[1]
+            return resolveVariablePath(path, context)
+        }
+
+        // Otherwise, do string interpolation
+        var result = str
+        matches.forEach { match ->
+            val path = match.groupValues[1]
+            val value = resolveVariablePath(path, context)
+            result = result.replace(match.value, value.toString())
+        }
+
+        return result
+    }
+
+    private fun resolveVariablePath(path: String, context: WorkflowExecutionContext): Any {
+        val parts = path.split(".")
+        var current: Any = context.variables[parts[0]]
+            ?: throw MissingVariableException(parts[0])
+
+        for (i in 1 until parts.size) {
+            val part = parts[i]
+            current = when (current) {
+                is Map<*, *> -> current[part]
+                    ?: throw MissingVariableException("${parts.subList(0, i+1).joinToString(".")}")
+                is List<*> -> {
+                    val index = part.toIntOrNull()
+                        ?: throw IllegalArgumentException("Invalid list index: $part")
+                    current.getOrNull(index)
+                        ?: throw MissingVariableException("${parts.subList(0, i+1).joinToString(".")} (index out of bounds)")
+                }
+                else -> throw IllegalArgumentException("Cannot access property '$part' on ${current::class.simpleName}")
+            }
+        }
+
+        return current
+    }
+
+    class MissingVariableException(varName: String) : Exception("Variable not found: \$$varName")
 
     /**
      * Evaluate condition expression against context variables.
      * Simple approach: string replacement + eval (for MVP).
      */
+    /**
+     * Evaluate condition expression against context variables.
+     * Supports: ===, !==, ==, !=, >, <, >=, <=, &&, ||, !
+     * Example: "$error === null && $data.name !== null"
+     */
     private fun evaluateCondition(condition: String, context: WorkflowExecutionContext): Boolean {
-        // TODO: Replace $varName with actual values
-        // TODO: Eval as boolean expression
-        // For MVP: just return true to test then branches
-        return true
+        // First, resolve all $variables in the condition string
+        val resolvedCondition = resolveVariablesInCondition(condition, context)
+
+        // Parse and evaluate
+        return evaluateExpression(resolvedCondition)
+    }
+
+    /**
+     * Replace $variables with their string representations for evaluation.
+     * Special handling for null, booleans, numbers, and strings.
+     */
+    private fun resolveVariablesInCondition(condition: String, context: WorkflowExecutionContext): String {
+        val pattern = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""")
+
+        var result = condition
+        pattern.findAll(condition).forEach { match ->
+            val path = match.groupValues[1]
+            try {
+                val value = resolveVariablePath(path, context)
+                val replacement = when (value) {
+                    null -> "null"
+                    is String -> "\"${value.replace("\"", "\\\"")}\"" // Escape quotes
+                    is Boolean -> value.toString()
+                    is Number -> value.toString()
+                    else -> "\"$value\"" // Stringify everything else
+                }
+                result = result.replace(match.value, replacement)
+            } catch (e: MissingVariableException) {
+                throw e
+            }
+        }
+
+        return result
+    }
+
+    /**
+     * Evaluate boolean expression with operator precedence:
+     * 1. ! (not)
+     * 2. Comparisons (===, !==, ==, !=, >, <, >=, <=)
+     * 3. && (and)
+     * 4. || (or)
+     */
+    private fun evaluateExpression(expr: String): Boolean {
+        return evaluateOr(expr.trim())
+    }
+
+    private fun evaluateOr(expr: String): Boolean {
+        val parts = splitByOperator(expr, "||")
+        if (parts.size == 1) return evaluateAnd(parts[0])
+
+        return parts.any { evaluateAnd(it) }
+    }
+
+    private fun evaluateAnd(expr: String): Boolean {
+        val parts = splitByOperator(expr, "&&")
+        if (parts.size == 1) return evaluateComparison(parts[0])
+
+        return parts.all { evaluateComparison(it) }
+    }
+
+    private fun evaluateComparison(expr: String): Boolean {
+        val trimmed = expr.trim()
+
+        // Handle negation
+        if (trimmed.startsWith("!")) {
+            return !evaluateComparison(trimmed.substring(1))
+        }
+
+        // Try each comparison operator in order (longest first to match === before ==)
+        val operators = listOf("===", "!==", "==", "!=", ">=", "<=", ">", "<")
+
+        for (op in operators) {
+            val parts = splitByOperator(trimmed, op, limit = 2)
+            if (parts.size == 2) {
+                val left = parseValue(parts[0].trim())
+                val right = parseValue(parts[1].trim())
+                return compare(left, right, op)
+            }
+        }
+
+        // No operator found - must be a boolean literal or parenthesized expression
+        return parseValue(trimmed) as? Boolean
+            ?: throw IllegalArgumentException("Invalid boolean expression: $trimmed")
+    }
+
+    /**
+     * Split string by operator, respecting quotes.
+     * Returns list with 1 element if operator not found.
+     */
+    private fun splitByOperator(expr: String, operator: String, limit: Int = 0): List<String> {
+        val parts = mutableListOf<String>()
+        var current = StringBuilder()
+        var inQuotes = false
+        var i = 0
+
+        while (i < expr.length) {
+            when {
+                expr[i] == '"' && (i == 0 || expr[i-1] != '\\') -> {
+                    inQuotes = !inQuotes
+                    current.append(expr[i])
+                    i++
+                }
+                !inQuotes && expr.substring(i).startsWith(operator) -> {
+                    if (limit > 0 && parts.size >= limit - 1) {
+                        // Reached limit, rest goes in last part
+                        current.append(expr.substring(i))
+                        break
+                    }
+                    parts.add(current.toString())
+                    current = StringBuilder()
+                    i += operator.length
+                }
+                else -> {
+                    current.append(expr[i])
+                    i++
+                }
+            }
+        }
+
+        parts.add(current.toString())
+        return if (parts.size == 1 && parts[0] == expr) listOf(expr) else parts
+    }
+
+    /**
+     * Parse a value from string representation.
+     */
+    private fun parseValue(str: String): Any? {
+        val trimmed = str.trim()
+
+        return when {
+            trimmed == "null" -> null
+            trimmed == "true" -> true
+            trimmed == "false" -> false
+            trimmed.startsWith("\"") && trimmed.endsWith("\"") -> {
+                // String literal - unescape quotes
+                trimmed.substring(1, trimmed.length - 1).replace("\\\"", "\"")
+            }
+            trimmed.toIntOrNull() != null -> trimmed.toInt()
+            trimmed.toDoubleOrNull() != null -> trimmed.toDouble()
+            else -> throw IllegalArgumentException("Cannot parse value: $trimmed")
+        }
+    }
+
+    /**
+     * Compare two values with given operator.
+     */
+    private fun compare(left: Any?, right: Any?, operator: String): Boolean {
+        return when (operator) {
+            "===" -> left === right || (left == null && right == null) || left == right
+            "!==" -> !(left === right || (left == null && right == null) || left == right)
+            "==" -> left == right
+            "!=" -> left != right
+            ">", "<", ">=", "<=" -> {
+                // Numeric comparison
+                val leftNum = (left as? Number)?.toDouble()
+                    ?: throw IllegalArgumentException("Cannot compare non-numeric value: $left")
+                val rightNum = (right as? Number)?.toDouble()
+                    ?: throw IllegalArgumentException("Cannot compare non-numeric value: $right")
+
+                when (operator) {
+                    ">" -> leftNum > rightNum
+                    "<" -> leftNum < rightNum
+                    ">=" -> leftNum >= rightNum
+                    "<=" -> leftNum <= rightNum
+                    else -> false
+                }
+            }
+            else -> throw IllegalArgumentException("Unknown operator: $operator")
+        }
     }
 
     /**
