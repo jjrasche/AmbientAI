@@ -20,6 +20,8 @@ import com.ambientai.data.entities.LlmInteraction
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.LlmInteractionRepository
 import com.ambientai.data.repositories.TranscriptRepository
+import com.ambientai.workflow.MultipleMatchException
+import com.ambientai.workflow.WorkflowRouter
 import kotlinx.coroutines.*
 
 class VoiceListeningService : Service() {
@@ -30,6 +32,7 @@ class VoiceListeningService : Service() {
     private var llmInteractionRepository: LlmInteractionRepository? = null
     private var llmService: GroqLlmService? = null
     private var ttsService: TextToSpeechService? = null
+    private var workflowRouter: WorkflowRouter? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val binder = LocalBinder()
@@ -40,20 +43,20 @@ class VoiceListeningService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
 
+        // Legacy hardcoded triggers - kept for backward compatibility
+        // TODO: Remove once all workflows are migrated to WorkflowRouter
         private val NOTE_TRIGGERS = listOf(
             "note this",
             "just noting",
             "take a note"
         )
 
-        // Context management triggers
         private val CLEAR_CONTEXT_TRIGGERS = listOf(
             "clear context",
             "reset context",
             "new context"
         )
 
-        // Grade pattern: "grade that X" where X is 0-5
         private val GRADE_PATTERN = Regex("""grade\s+that\s+(\d)""", RegexOption.IGNORE_CASE)
     }
 
@@ -95,6 +98,7 @@ class VoiceListeningService : Service() {
         transcriptRepository = TranscriptRepository(applicationContext)
         llmInteractionRepository = LlmInteractionRepository(applicationContext)
         llmService = GroqLlmService()
+        workflowRouter = WorkflowRouter(applicationContext)
 
         initializeComponents()
     }
@@ -114,7 +118,6 @@ class VoiceListeningService : Service() {
         wakeWordDetector?.cleanup()
         speechRecognizer?.cleanup()
         ttsService?.cleanup()
-        // Don't close repositories - they share the application's BoxStore
         serviceScope.cancel()
     }
 
@@ -180,6 +183,10 @@ class VoiceListeningService : Service() {
                 )
                 speechRecognizer?.initialize()
 
+                // Load workflows into router
+                workflowRouter?.loadWorkflows()
+                Log.d(TAG, "Workflows loaded into router")
+
                 Log.d(TAG, "All components initialized")
                 wakeWordDetector?.start()
                 updateNotification("Listening for wake word...")
@@ -187,6 +194,15 @@ class VoiceListeningService : Service() {
                 Log.e(TAG, "Failed to initialize components", e)
             }
         }
+    }
+
+    /**
+     * Reload workflows from database.
+     * Call this when workflows are added/modified/deleted.
+     */
+    fun reloadWorkflows() {
+        workflowRouter?.loadWorkflows()
+        Log.d(TAG, "Workflows reloaded")
     }
 
     private fun handleWakeWord() {
@@ -230,12 +246,52 @@ class VoiceListeningService : Service() {
 
         listeners.forEach { it.onTranscriptSaved(transcript) }
 
-        // Check for command triggers
+        // Check for legacy hardcoded triggers first
+        // TODO: Migrate these to WorkflowDefinitions and remove
         when {
             shouldClearContext(text) -> handleClearContext()
             shouldGrade(text) -> handleGrade(text)
-            shouldNote(text) -> handleNote()  // NEW
-            else -> handleConversationalQuery()  // Changed from wake word restart
+            shouldNote(text) -> handleNote()
+            else -> routeToWorkflow(text)
+        }
+    }
+
+    /**
+     * Route transcript to workflow using WorkflowRouter.
+     * Handles MultipleMatchException by speaking error to user.
+     */
+    private fun routeToWorkflow(text: String) {
+        serviceScope.launch {
+            try {
+                val match = workflowRouter?.route(text)
+
+                if (match == null) {
+                    // No workflow matched - use fallback conversational response
+                    Log.d(TAG, "No workflow matched, using conversational fallback")
+                    handleConversationalQuery()
+                } else {
+                    // Workflow matched - execute it
+                    Log.d(TAG, "Routing to workflow: ${match.definition.name}")
+                    // TODO: Pass to WorkflowExecutor (Phase 3)
+                    // For now, fallback to conversational response
+                    handleConversationalQuery()
+                }
+
+            } catch (e: MultipleMatchException) {
+                // Multiple workflows matched - speak error
+                Log.w(TAG, "Multiple workflows matched: ${e.matchedWorkflows}")
+                val workflowList = e.matchedWorkflows.joinToString(", ")
+                ttsService?.speak("Multiple workflows matched: $workflowList. Please be more specific.")
+
+                updateNotification("Listening for wake word...")
+                wakeWordDetector?.start()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error routing to workflow", e)
+                ttsService?.speak("Sorry, something went wrong.")
+
+                updateNotification("Listening for wake word...")
+                wakeWordDetector?.start()
+            }
         }
     }
 
