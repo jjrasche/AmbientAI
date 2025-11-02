@@ -1,43 +1,74 @@
 package com.ambientai.data.repositories
 
 import android.content.Context
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
+import android.util.Log
 import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.LlmInteraction
 import com.ambientai.data.entities.LlmInteraction_
 import io.objectbox.Box
 import io.objectbox.kotlin.boxFor
 import io.objectbox.query.OrderFlags
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 /**
  * Repository for CRUD operations on LlmInteraction entities.
- * Exposes LiveData for reactive UI updates.
+ * Exposes Flow for reactive UI updates.
  */
 class LlmInteractionRepository(context: Context) {
 
     private val box: Box<LlmInteraction> = AmbientAIApp.boxStore.boxFor()
 
-    // LiveData for reactive upddates
-    private val _interactions = MutableLiveData<List<LlmInteraction>>()
-    val interactions: LiveData<List<LlmInteraction>> = _interactions
-
-    private val _recentInteractions = MutableLiveData<List<LlmInteraction>>()
-    val recentInteractions: LiveData<List<LlmInteraction>> = _recentInteractions
-
-    init {
-        // Initialize with current data
-        refreshLiveData()
+    companion object {
+        private const val TAG = "LlmInteractionRepository"
     }
 
-    private fun refreshLiveData() {
-        _interactions.postValue(box.all)
-        _recentInteractions.postValue(getRecent(20))
+    /**
+     * Get all LLM interactions as a reactive Flow.
+     * Automatically emits new data when database changes.
+     */
+    fun getAllInteractions(): Flow<List<LlmInteraction>> = callbackFlow {
+        val query = box.query()
+            .order(LlmInteraction_.timestamp, OrderFlags.DESCENDING)
+            .build()
+
+        val subscription = query.subscribe().observer { data ->
+            Log.d(TAG, "Flow emitting ${data.size} interactions")
+            trySend(data)
+        }
+
+        awaitClose {
+            subscription.cancel()
+            Log.d(TAG, "Flow collection cancelled")
+        }
+    }
+
+    /**
+     * Get recent N interactions as a reactive Flow.
+     * Automatically emits new data when database changes.
+     */
+    fun getRecentInteractions(limit: Int): Flow<List<LlmInteraction>> = callbackFlow {
+        val query = box.query()
+            .order(LlmInteraction_.timestamp, OrderFlags.DESCENDING)
+            .build()
+
+        val subscription = query.subscribe().observer { data ->
+            val limited = data.take(limit)
+            Log.d(TAG, "Flow emitting ${limited.size} recent interactions (limit: $limit)")
+            trySend(limited)
+        }
+
+        awaitClose {
+            subscription.cancel()
+            Log.d(TAG, "Recent interactions flow collection cancelled")
+        }
     }
 
     fun save(interaction: LlmInteraction): LlmInteraction {
         box.put(interaction)
-        refreshLiveData()
+        Log.d(TAG, "Saved interaction ${interaction.id}")
+        // No manual refresh needed - Flow auto-emits
         return interaction
     }
 
@@ -76,16 +107,21 @@ class LlmInteractionRepository(context: Context) {
     }
 
     fun updateGrade(id: Long, grade: Int): Boolean {
-        val interaction = box.get(id) ?: return false
+        val interaction = box.get(id) ?: run {
+            Log.w(TAG, "Interaction $id not found for grade update")
+            return false
+        }
+
         interaction.grade = grade
         box.put(interaction)
-        refreshLiveData()
+        Log.d(TAG, "Updated interaction $id grade to $grade")
+        // Flow handles UI update automatically
         return true
     }
 
     fun delete(id: Long): Boolean {
         val result = box.remove(id)
-        refreshLiveData()
+        Log.d(TAG, "Deleted interaction $id: $result")
         return result
     }
 

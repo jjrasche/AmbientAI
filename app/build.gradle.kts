@@ -62,10 +62,12 @@ dependencies {
     implementation(libs.porcupine.android)
     implementation(libs.aicore)
 
-    // LiveData support for Compose
+    // Flow support for Compose - NEW DEPENDENCY
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+
+    // Existing LiveData support (can be removed later if fully migrated)
     implementation("androidx.compose.runtime:runtime-livedata:1.7.5")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
-    implementation(libs.androidx.compose.runtime.livedata)
 
     testImplementation(libs.junit)
 

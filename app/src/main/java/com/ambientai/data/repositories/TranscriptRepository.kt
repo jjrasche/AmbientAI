@@ -1,63 +1,77 @@
 package com.ambientai.data.repositories
 
 import android.content.Context
-import android.os.Looper
 import android.util.Log
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.entities.Transcript_
 import io.objectbox.Box
 import io.objectbox.kotlin.boxFor
 import io.objectbox.query.OrderFlags
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import java.text.SimpleDateFormat
 import java.util.*
 
 /**
  * Repository for CRUD operations on Transcript entities.
- * Exposes LiveData for reactive UI updates.
+ * Exposes Flow for reactive UI updates.
  */
 class TranscriptRepository(context: Context) {
 
     private val box: Box<Transcript> = AmbientAIApp.boxStore.boxFor()
     private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
 
-    // LiveData for reactive updates
-    private val _transcripts = MutableLiveData<List<Transcript>>()
-    val transcripts: LiveData<List<Transcript>> = _transcripts
-
-    private val _recentTranscripts = MutableLiveData<List<Transcript>>()
-    val recentTranscripts: LiveData<List<Transcript>> = _recentTranscripts
-
-    init {
-        // Initialize with current data
-        refreshLiveData()
+    companion object {
+        private const val TAG = "TranscriptRepository"
     }
 
-    private fun refreshLiveData() {
-        val all = getAll()
-        val recent = getRecent(20)
+    /**
+     * Get all transcripts as a reactive Flow.
+     * Automatically emits new data when database changes.
+     */
+    fun getAllTranscripts(): Flow<List<Transcript>> = callbackFlow {
+        val query = box.query()
+            .order(Transcript_.timestamp, OrderFlags.DESCENDING)
+            .build()
 
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            _transcripts.value = all
-            _recentTranscripts.value = recent
-        } else {
-            _transcripts.postValue(all)
-            _recentTranscripts.postValue(recent)
+        val subscription = query.subscribe().observer { data ->
+            Log.d(TAG, "Flow emitting ${data.size} transcripts")
+            trySend(data)
         }
 
-        Log.d("TranscriptRepo", "Refreshing LiveData - all count: ${all.size}, recent count: ${recent.size}")
-        Log.d("TranscriptRepo", "Thread: ${Thread.currentThread().name}")
-        Log.d("TranscriptRepo", "Recent first item excludeFromContext: ${recent.firstOrNull()?.excludeFromContext}")
+        awaitClose {
+            subscription.cancel()
+            Log.d(TAG, "Flow collection cancelled")
+        }
+    }
 
-        _transcripts.postValue(all)
-        _recentTranscripts.postValue(recent)
+    /**
+     * Get recent N transcripts as a reactive Flow.
+     * Automatically emits new data when database changes.
+     */
+    fun getRecentTranscripts(limit: Int): Flow<List<Transcript>> = callbackFlow {
+        val query = box.query()
+            .order(Transcript_.timestamp, OrderFlags.DESCENDING)
+            .build()
+
+        val subscription = query.subscribe().observer { data ->
+            val limited = data.take(limit)
+            Log.d(TAG, "Flow emitting ${limited.size} recent transcripts (limit: $limit)")
+            trySend(limited)
+        }
+
+        awaitClose {
+            subscription.cancel()
+            Log.d(TAG, "Recent transcripts flow collection cancelled")
+        }
     }
 
     fun save(transcript: Transcript): Transcript {
         box.put(transcript)
-        refreshLiveData()
+        Log.d(TAG, "Saved transcript ${transcript.id}")
+        // No manual refresh needed - Flow auto-emits
         return transcript
     }
 
@@ -95,38 +109,51 @@ class TranscriptRepository(context: Context) {
             .find()
     }
 
-    fun update(transcript: Transcript) {
-        Log.d("TranscriptRepo", "Before update: excludeFromContext=${transcript.excludeFromContext}")
+    /**
+     * Toggle excludeFromContext for a transcript by ID.
+     * Fetches fresh entity from database to avoid stale references.
+     */
+    fun toggleExcludeFromContext(id: Long) {
+        val transcript = box.get(id) ?: run {
+            Log.w(TAG, "Transcript $id not found for toggle")
+            return
+        }
+
+        val oldValue = transcript.excludeFromContext
+        transcript.excludeFromContext = !transcript.excludeFromContext
         box.put(transcript)
 
-        // Force a fresh query
-        val updated = box.get(transcript.id)
-        Log.d("TranscriptRepo", "After update: excludeFromContext=${updated?.excludeFromContext}")
+        Log.d(TAG, "Toggled transcript $id: excludeFromContext $oldValue -> ${transcript.excludeFromContext}")
+        // Flow handles UI update automatically
+    }
 
-        refreshLiveData()
+    fun update(transcript: Transcript) {
+        Log.d(TAG, "Updating transcript ${transcript.id}: excludeFromContext=${transcript.excludeFromContext}")
+        box.put(transcript)
+        // Flow handles UI update automatically
     }
 
     fun delete(id: Long): Boolean {
         val result = box.remove(id)
-        refreshLiveData()
+        Log.d(TAG, "Deleted transcript $id: $result")
         return result
     }
 
     fun delete(transcript: Transcript) {
         box.remove(transcript)
-        refreshLiveData()
+        Log.d(TAG, "Deleted transcript ${transcript.id}")
     }
 
     fun deleteAll() {
         box.removeAll()
-        refreshLiveData()
+        Log.d(TAG, "Deleted all transcripts")
     }
 
     fun clearContext() {
         val transcripts = box.all
         transcripts.forEach { it.excludeFromContext = true }
         box.put(transcripts)
-        refreshLiveData()
+        Log.d(TAG, "Cleared context for ${transcripts.size} transcripts")
     }
 
     fun count(): Long {

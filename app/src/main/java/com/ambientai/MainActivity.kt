@@ -8,7 +8,6 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
-import androidx.lifecycle.Observer
 import androidx.compose.runtime.DisposableEffect
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -24,13 +23,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ambientai.core.VoiceListeningService
 import com.ambientai.core.llm.GeminiNanoTester
 import com.ambientai.data.entities.LlmInteraction
@@ -85,7 +84,7 @@ class MainActivity : ComponentActivity() {
 
         override fun onTranscriptSaved(transcript: Transcript) {
             currentTranscript = ""
-            // LiveData will handle the update automatically
+            // Flow will handle the update automatically
         }
     }
 
@@ -122,7 +121,7 @@ class MainActivity : ComponentActivity() {
                     if (showNanoTest) {
                         NanoTestScreen(onBack = { showNanoTest = false })
                     } else {
-                        DebugScreenWithLiveData(
+                        DebugScreenWithFlow(
                             currentTranscript = currentTranscript,
                             transcriptRepository = transcriptRepository!!,
                             llmInteractionRepository = llmInteractionRepository!!,
@@ -181,40 +180,34 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun toggleExcludeFromContext(transcript: Transcript) {
-        val oldValue = transcript.excludeFromContext
-        transcript.excludeFromContext = !transcript.excludeFromContext
-        transcriptRepository?.update(transcript)
-        Log.d(TAG, "Toggled transcript ${transcript.id}: excludeFromContext ${oldValue} -> ${transcript.excludeFromContext}")
-        // LiveData will handle the UI update automatically
+        // Use repository method that fetches fresh entity by ID
+        transcriptRepository?.toggleExcludeFromContext(transcript.id)
+        Log.d(TAG, "Toggled excludeFromContext for transcript ${transcript.id}")
+        // Flow handles UI update automatically
     }
 
     @Composable
-    fun DebugScreenWithLiveData(
+    fun DebugScreenWithFlow(
         currentTranscript: String,
         transcriptRepository: TranscriptRepository,
         llmInteractionRepository: LlmInteractionRepository,
         onTestNano: () -> Unit,
         onToggleExcludeFromContext: (Transcript) -> Unit
     ) {
-        // Observe LiveData from repositories
-        val transcripts by transcriptRepository.recentTranscripts.observeAsState(emptyList())
-        val llmInteractions by llmInteractionRepository.recentInteractions.observeAsState(emptyList())
+        // Collect Flows as State - automatically updates when database changes
+        val transcripts by transcriptRepository.getRecentTranscripts(20)
+            .collectAsStateWithLifecycle(initialValue = emptyList())
 
-        DisposableEffect(Unit) {
-            val observer = Observer<List<Transcript>> { list ->
-                Log.d("MainActivity", "LiveData changed! Size: ${list.size}, first excludeFromContext: ${list.firstOrNull()?.excludeFromContext}")
-            }
-            transcriptRepository.recentTranscripts.observeForever(observer)
+        val llmInteractions by llmInteractionRepository.getRecentInteractions(20)
+            .collectAsStateWithLifecycle(initialValue = emptyList())
 
-            onDispose {
-                transcriptRepository.recentTranscripts.removeObserver(observer)
-            }
-        }
         // Combine into timeline items
-        val timelineItems = buildList {
-            addAll(transcripts.map { TimelineItem.TranscriptItem(it) })
-            addAll(llmInteractions.map { TimelineItem.LlmItem(it) })
-        }.sortedByDescending { it.timestamp }
+        val timelineItems = remember(transcripts, llmInteractions) {
+            buildList {
+                addAll(transcripts.map { TimelineItem.TranscriptItem(it) })
+                addAll(llmInteractions.map { TimelineItem.LlmItem(it) })
+            }.sortedByDescending { it.timestamp }
+        }
 
         DebugScreen(
             currentTranscript = currentTranscript,
@@ -286,7 +279,12 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(timelineItems) { item ->
+                items(timelineItems, key = { item ->
+                    when (item) {
+                        is TimelineItem.TranscriptItem -> "t-${item.transcript.id}"
+                        is TimelineItem.LlmItem -> "l-${item.interaction.id}"
+                    }
+                }) { item ->
                     when (item) {
                         is TimelineItem.TranscriptItem -> {
                             TranscriptCard(
