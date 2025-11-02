@@ -21,6 +21,7 @@ import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.LlmInteractionRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.workflow.MultipleMatchException
+import com.ambientai.workflow.WorkflowExecutor
 import com.ambientai.workflow.WorkflowRouter
 import kotlinx.coroutines.*
 
@@ -33,6 +34,7 @@ class VoiceListeningService : Service() {
     private var llmService: GroqLlmService? = null
     private var ttsService: TextToSpeechService? = null
     private var workflowRouter: WorkflowRouter? = null
+    private var workflowExecutor: WorkflowExecutor? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private val binder = LocalBinder()
@@ -99,7 +101,7 @@ class VoiceListeningService : Service() {
         llmInteractionRepository = LlmInteractionRepository(applicationContext)
         llmService = GroqLlmService()
         workflowRouter = WorkflowRouter(applicationContext)
-
+        workflowExecutor = WorkflowExecutor(applicationContext)
         initializeComponents()
     }
 
@@ -118,6 +120,7 @@ class VoiceListeningService : Service() {
         wakeWordDetector?.cleanup()
         speechRecognizer?.cleanup()
         ttsService?.cleanup()
+        workflowExecutor?.cleanup()
         serviceScope.cancel()
     }
 
