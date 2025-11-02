@@ -4,8 +4,8 @@ import android.content.Context
 import android.util.Log
 import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.tts.TextToSpeechService
-import com.ambientai.data.entities.WorkflowExecutionLog
-import com.ambientai.data.entities.ActionExecutionLog
+import com.ambientai.data.entities.WorkflowExecution
+import com.ambientai.data.entities.ActionExecution
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowExecutionRepository
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +44,7 @@ class WorkflowExecutor(private val context: Context) {
      */
     suspend fun execute(match: WorkflowMatch): WorkflowResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        val executionLog = WorkflowExecutionLog(
+        val executionLog = WorkflowExecution(
             workflowId = match.definition.id,
             workflowName = match.definition.name,
             transcript = match.context.transcript,
@@ -168,7 +168,7 @@ class WorkflowExecutor(private val context: Context) {
             }
 
             // 4. Log execution
-            val actionLog = ActionExecutionLog(
+            val actionLog = ActionExecution(
                 workflowExecutionId = executionId,
                 stepIndex = stepIndex,
                 stepPath = stepPath,
@@ -187,7 +187,7 @@ class WorkflowExecutor(private val context: Context) {
             val latency = System.currentTimeMillis() - startTime
 
             // Log failed execution
-            val actionLog = ActionExecutionLog(
+            val actionLog = ActionExecution(
                 workflowExecutionId = executionId,
                 stepIndex = stepIndex,
                 stepPath = stepPath,

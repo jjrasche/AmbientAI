@@ -3,7 +3,7 @@ package com.ambientai.workflow
 import android.content.Context
 import android.util.Log
 import com.ambientai.data.entities.WorkflowDefinition
-import com.ambientai.data.repositories.WorkflowRepository
+import com.ambientai.data.repositories.WorkflowDefinitionRepository
 import org.json.JSONObject
 
 /**
@@ -12,7 +12,7 @@ import org.json.JSONObject
  */
 class WorkflowRouter(context: Context) {
 
-    private val workflowRepo = WorkflowRepository(context)
+    private val workflowRepo = WorkflowDefinitionRepository(context)
     private var workflows: List<WorkflowDefinition> = emptyList()
 
     companion object {

@@ -10,7 +10,7 @@ import io.objectbox.kotlin.boxFor
 /**
  * Repository for CRUD operations on WorkflowDefinition entities.
  */
-class WorkflowRepository(context: Context) {
+class WorkflowDefinitionRepository(context: Context) {
 
     private val box: Box<WorkflowDefinition> = AmbientAIApp.boxStore.boxFor()
 
