@@ -40,13 +40,10 @@ class VoiceListeningService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
 
-        // Conversational triggers
-        private val ANSWER_TRIGGERS = listOf(
-            "answer me",
-            "what do you think",
-            "your thoughts",
-            "can you help",
-            "tell me"
+        private val NOTE_TRIGGERS = listOf(
+            "note this",
+            "just noting",
+            "take a note"
         )
 
         // Context management triggers
@@ -207,6 +204,19 @@ class VoiceListeningService : Service() {
         listeners.forEach { it.onPartialTranscript(text) }
     }
 
+    private fun shouldNote(text: String): Boolean {
+        val lowerText = text.lowercase()
+        return NOTE_TRIGGERS.any { trigger -> lowerText.contains(trigger) }
+    }
+
+    private fun handleNote() {
+        serviceScope.launch {
+            ttsService?.speak("Noted.")
+            updateNotification("Listening for wake word...")
+            wakeWordDetector?.start()
+        }
+    }
+
     private fun handleTranscript(text: String) {
         Log.d(TAG, "Transcript received: $text")
 
@@ -224,17 +234,9 @@ class VoiceListeningService : Service() {
         when {
             shouldClearContext(text) -> handleClearContext()
             shouldGrade(text) -> handleGrade(text)
-            shouldRespond(text) -> handleConversationalQuery()
-            else -> {
-                updateNotification("Listening for wake word...")
-                wakeWordDetector?.start()
-            }
+            shouldNote(text) -> handleNote()  // NEW
+            else -> handleConversationalQuery()  // Changed from wake word restart
         }
-    }
-
-    private fun shouldRespond(text: String): Boolean {
-        val lowerText = text.lowercase()
-        return ANSWER_TRIGGERS.any { trigger -> lowerText.contains(trigger) }
     }
 
     private fun shouldClearContext(text: String): Boolean {

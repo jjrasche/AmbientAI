@@ -1,6 +1,8 @@
 package com.ambientai.data.repositories
 
 import android.content.Context
+import android.os.Looper
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.ambientai.AmbientAIApp
@@ -34,8 +36,23 @@ class TranscriptRepository(context: Context) {
     }
 
     private fun refreshLiveData() {
-        _transcripts.postValue(getAll())
-        _recentTranscripts.postValue(getRecent(20))
+        val all = getAll()
+        val recent = getRecent(20)
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            _transcripts.value = all
+            _recentTranscripts.value = recent
+        } else {
+            _transcripts.postValue(all)
+            _recentTranscripts.postValue(recent)
+        }
+
+        Log.d("TranscriptRepo", "Refreshing LiveData - all count: ${all.size}, recent count: ${recent.size}")
+        Log.d("TranscriptRepo", "Thread: ${Thread.currentThread().name}")
+        Log.d("TranscriptRepo", "Recent first item excludeFromContext: ${recent.firstOrNull()?.excludeFromContext}")
+
+        _transcripts.postValue(all)
+        _recentTranscripts.postValue(recent)
     }
 
     fun save(transcript: Transcript): Transcript {
@@ -79,7 +96,13 @@ class TranscriptRepository(context: Context) {
     }
 
     fun update(transcript: Transcript) {
+        Log.d("TranscriptRepo", "Before update: excludeFromContext=${transcript.excludeFromContext}")
         box.put(transcript)
+
+        // Force a fresh query
+        val updated = box.get(transcript.id)
+        Log.d("TranscriptRepo", "After update: excludeFromContext=${updated?.excludeFromContext}")
+
         refreshLiveData()
     }
 

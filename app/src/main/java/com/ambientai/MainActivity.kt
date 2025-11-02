@@ -8,6 +8,8 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
+import androidx.lifecycle.Observer
+import androidx.compose.runtime.DisposableEffect
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -198,13 +200,21 @@ class MainActivity : ComponentActivity() {
         val transcripts by transcriptRepository.recentTranscripts.observeAsState(emptyList())
         val llmInteractions by llmInteractionRepository.recentInteractions.observeAsState(emptyList())
 
-        // Combine into timeline items
-        val timelineItems = remember(transcripts, llmInteractions) {
-            buildList {
-                addAll(transcripts.map { TimelineItem.TranscriptItem(it) })
-                addAll(llmInteractions.map { TimelineItem.LlmItem(it) })
-            }.sortedByDescending { it.timestamp }
+        DisposableEffect(Unit) {
+            val observer = Observer<List<Transcript>> { list ->
+                Log.d("MainActivity", "LiveData changed! Size: ${list.size}, first excludeFromContext: ${list.firstOrNull()?.excludeFromContext}")
+            }
+            transcriptRepository.recentTranscripts.observeForever(observer)
+
+            onDispose {
+                transcriptRepository.recentTranscripts.removeObserver(observer)
+            }
         }
+        // Combine into timeline items
+        val timelineItems = buildList {
+            addAll(transcripts.map { TimelineItem.TranscriptItem(it) })
+            addAll(llmInteractions.map { TimelineItem.LlmItem(it) })
+        }.sortedByDescending { it.timestamp }
 
         DebugScreen(
             currentTranscript = currentTranscript,
