@@ -1,7 +1,9 @@
 package com.ambientai.data.entities
 
+import io.objectbox.annotation.Convert
 import io.objectbox.annotation.Entity
 import io.objectbox.annotation.Id
+import io.objectbox.converter.PropertyConverter
 import io.objectbox.relation.ToMany
 
 /**
@@ -11,12 +13,14 @@ import io.objectbox.relation.ToMany
 @Entity
 data class Task(
     @Id var id: Long = 0,
-    var name: String,
-    var status: TaskStatus,  // active, paused, completed
-    var createdAt: Long,
+    var name: String = "",
+    @Convert(converter = TaskStatusConverter::class, dbType = Int::class)
+    var status: TaskStatus = TaskStatus.ACTIVE,
+    var createdAt: Long = 0,
     var completedAt: Long? = null
 ) {
-    lateinit var sessions: ToMany<TaskSession>
+    // Remove lateinit - ObjectBox initializes this
+    var sessions: ToMany<TaskSession>? = null
 
     /**
      * Calculate total elapsed time across all sessions.
@@ -24,7 +28,7 @@ data class Task(
      */
     fun totalElapsedMs(): Long {
         var total = 0L
-        sessions.forEach { session ->
+        sessions?.forEach { session ->
             total += session.durationMs()
         }
         return total
@@ -34,7 +38,7 @@ data class Task(
      * Get current active session, if any.
      */
     fun currentSession(): TaskSession? {
-        return sessions.firstOrNull { it.endedAt == null }
+        return sessions?.firstOrNull { it.endedAt == null }
     }
 }
 
@@ -45,15 +49,28 @@ enum class TaskStatus {
 }
 
 /**
+ * Converter for TaskStatus enum to Int for ObjectBox storage.
+ */
+class TaskStatusConverter : PropertyConverter<TaskStatus, Int> {
+    override fun convertToDatabaseValue(entityProperty: TaskStatus?): Int {
+        return entityProperty?.ordinal ?: 0
+    }
+
+    override fun convertToEntityProperty(databaseValue: Int?): TaskStatus {
+        return TaskStatus.entries.getOrNull(databaseValue ?: 0) ?: TaskStatus.ACTIVE
+    }
+}
+
+/**
  * Represents one continuous work session on a task.
  * Created on task start or resume, ended on pause or complete.
  */
 @Entity
 data class TaskSession(
     @Id var id: Long = 0,
-    var taskId: Long,  // Foreign key to Task
-    var startedAt: Long,
-    var endedAt: Long? = null  // null = currently active
+    var taskId: Long = 0,
+    var startedAt: Long = 0,
+    var endedAt: Long? = null
 ) {
     /**
      * Duration of this session.

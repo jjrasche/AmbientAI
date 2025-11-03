@@ -39,7 +39,7 @@ class TaskRepository(context: Context) {
             createdAt = now
         )
         taskBox.put(task)
-        task.sessions.reset()  // Initialize relation
+        task.sessions?.reset()  // Initialize relation
 
         // Create first session
         val session = TaskSession(
@@ -47,7 +47,7 @@ class TaskRepository(context: Context) {
             startedAt = now
         )
         sessionBox.put(session)
-        task.sessions.add(session)
+        task.sessions?.add(session)
 
         return Result.success(task)
     }
@@ -94,7 +94,7 @@ class TaskRepository(context: Context) {
             startedAt = System.currentTimeMillis()
         )
         sessionBox.put(session)
-        task.sessions.add(session)
+        task.sessions?.add(session)
 
         task.status = TaskStatus.ACTIVE
         taskBox.put(task)
