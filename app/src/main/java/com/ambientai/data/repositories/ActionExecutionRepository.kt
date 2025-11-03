@@ -8,6 +8,10 @@ import com.ambientai.data.entities.ActionExecution_
 import io.objectbox.Box
 import io.objectbox.kotlin.boxFor
 import io.objectbox.query.OrderFlags
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import org.json.JSONObject
 
 class ActionExecutionRepository(context: Context) {
 
@@ -81,5 +85,37 @@ class ActionExecutionRepository(context: Context) {
         return box.query(ActionExecution_.actionName.equal(actionName))
             .build()
             .count()
+    }
+
+    data class LlmInteractionView(
+        val id: Long,
+        val systemPrompt: String,
+        val userPrompt: String,
+        val response: String,
+        val timestamp: Long,
+        val latencyMs: Long,
+        val grade: Int?
+    )
+    fun getLlmInteractions(): Flow<List<LlmInteractionView>> = callbackFlow {
+        val query = box.query(ActionExecution_.actionName.equal("llm.prompt")).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build()
+        val subscription = query.subscribe().observer { actions ->
+            val llmViews = actions.mapNotNull { extractLlmView(it) }
+            trySend(llmViews)
+        }
+        awaitClose { subscription.cancel() }
+    }
+    private fun extractLlmView(action: ActionExecution): LlmInteractionView? {
+        if (!action.success) return null
+        val input = JSONObject(action.inputJson)
+        val output = JSONObject(action.outputJson)
+        return LlmInteractionView(
+            id = action.id,
+            systemPrompt = input.optString("systemPrompt", ""),
+            userPrompt = input.optString("userPrompt", ""),
+            response = output.optString("response", ""),
+            timestamp = action.timestamp,
+            latencyMs = action.latencyMs,
+            grade = action.grade
+        )
     }
 }

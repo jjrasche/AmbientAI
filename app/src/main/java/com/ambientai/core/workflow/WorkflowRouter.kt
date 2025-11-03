@@ -62,8 +62,8 @@ class WorkflowRouter(context: Context) {
 
         return when {
             matches.isEmpty() -> {
-                Log.d(TAG, "No workflow matched: $transcript")
-                null
+                Log.d(TAG, "No workflow matched, using conversational default")
+                createConversationalDefault(transcript)
             }
             matches.size == 1 -> {
                 val match = matches.first()
@@ -80,6 +80,38 @@ class WorkflowRouter(context: Context) {
                 )
             }
         }
+    }
+
+
+    private fun createConversationalDefault(transcript: String): WorkflowMatch {
+        // Create an inline workflow definition for conversational response
+        val defaultWorkflow = WorkflowDefinition(
+            id = -1, // Synthetic ID
+            name = "conversational_default",
+            enabled = true,
+            definition = """{
+            "triggers":[],
+            "steps":[
+                {"action":"llm.prompt","input":{
+                    "systemPrompt":"You are a helpful voice assistant. Provide brief, conversational responses.",
+                    "userPrompt":"$transcript",
+                    "temperature":0.7,
+                    "maxTokens":150
+                },"output":"response"},
+                {"action":"tts.speak","input":{"text":"${'$'}response.response"}}
+            ]
+        }"""
+        )
+
+        val context = WorkflowExecutionContext(
+            workflowId = -1,
+            workflowName = "conversational_default",
+            transcript = transcript,
+            matchedTrigger = "(default)"
+        )
+        context.variables["transcript"] = transcript
+
+        return WorkflowMatch(defaultWorkflow, context)
     }
 
     /**

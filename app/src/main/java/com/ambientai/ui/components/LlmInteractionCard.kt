@@ -8,12 +8,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.ambientai.data.entities.LlmInteraction
+import com.ambientai.data.repositories.ActionExecutionRepository
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun LlmInteractionCard(interaction: LlmInteraction) {
+fun LlmInteractionCard(interaction: ActionExecutionRepository.LlmInteractionView) {
     val dateFormat = SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault())
 
     Card(

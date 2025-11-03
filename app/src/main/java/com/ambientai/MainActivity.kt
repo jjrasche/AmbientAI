@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
 import com.ambientai.data.entities.Transcript
-import com.ambientai.data.repositories.LlmInteractionRepository
+import com.ambientai.data.repositories.ActionExecutionRepository
 import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
 
     // Repositories
     private lateinit var transcriptRepository: TranscriptRepository
-    private lateinit var llmInteractionRepository: LlmInteractionRepository
+    private lateinit var actionExecutionRepository: ActionExecutionRepository
     private lateinit var workflowDefinitionRepository: WorkflowDefinitionRepository
     private lateinit var taskRepository: TaskRepository
 
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
 
         // Initialize repositories
         transcriptRepository = TranscriptRepository(applicationContext)
-        llmInteractionRepository = LlmInteractionRepository(applicationContext)
+        actionExecutionRepository = ActionExecutionRepository(applicationContext)
         workflowDefinitionRepository = WorkflowDefinitionRepository()
         taskRepository = TaskRepository(applicationContext)
 
@@ -109,13 +109,13 @@ class MainActivity : ComponentActivity() {
                         Screen.Timeline -> TimelineScreen(
                             currentTranscript = currentTranscript,
                             transcriptRepository = transcriptRepository,
-                            llmInteractionRepository = llmInteractionRepository,
+                            actionExecutionRepository = actionExecutionRepository,
                             onNavigateToDb = { currentScreen = Screen.Database },
                             onToggleExcludeFromContext = ::toggleExcludeFromContext
                         )
                         Screen.Database -> DatabaseScreen(
                             transcriptRepository = transcriptRepository,
-                            llmInteractionRepository = llmInteractionRepository,
+                            actionExecutionRepository = actionExecutionRepository,
                             workflowDefinitionRepository = workflowDefinitionRepository,
                             taskRepository = taskRepository,
                             onBack = { currentScreen = Screen.Timeline }

@@ -7,13 +7,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ambientai.data.entities.LlmInteraction
+import androidx.compose.ui.unit.dp import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ambientai.data.entities.Transcript
-import com.ambientai.data.repositories.LlmInteractionRepository
+import com.ambientai.data.repositories.ActionExecutionRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.ui.components.LlmInteractionCard
 import com.ambientai.ui.components.TranscriptCard
@@ -25,7 +22,7 @@ sealed class TimelineItem {
         override val timestamp = transcript.timestamp
     }
 
-    data class LlmItem(val interaction: LlmInteraction) : TimelineItem() {
+    data class LlmItem(val interaction: ActionExecutionRepository.LlmInteractionView) : TimelineItem() {
         override val timestamp = interaction.timestamp
     }
 }
@@ -34,16 +31,14 @@ sealed class TimelineItem {
 fun TimelineScreen(
     currentTranscript: String,
     transcriptRepository: TranscriptRepository,
-    llmInteractionRepository: LlmInteractionRepository,
+    actionExecutionRepository: ActionExecutionRepository,
     onNavigateToDb: () -> Unit,
     onToggleExcludeFromContext: (Transcript) -> Unit
 ) {
     // Collect Flows as State
-    val transcripts by transcriptRepository.getRecentTranscripts(20)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val transcripts by transcriptRepository.getRecentTranscripts(20).collectAsStateWithLifecycle(initialValue = emptyList())
 
-    val llmInteractions by llmInteractionRepository.getRecentInteractions(20)
-        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val llmInteractions by actionExecutionRepository.getLlmInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
 
     // Combine into timeline items
     val timelineItems = remember(transcripts, llmInteractions) {

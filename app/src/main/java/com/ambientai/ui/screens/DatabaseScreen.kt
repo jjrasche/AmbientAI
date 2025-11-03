@@ -12,11 +12,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ambientai.data.WorkflowSeeder
-import com.ambientai.data.entities.LlmInteraction
 import com.ambientai.data.entities.Task
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.entities.WorkflowDefinition
-import com.ambientai.data.repositories.LlmInteractionRepository
+import com.ambientai.data.repositories.ActionExecutionRepository
 import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
@@ -28,13 +27,13 @@ import java.util.*
 @Composable
 fun DatabaseScreen(
     transcriptRepository: TranscriptRepository,
-    llmInteractionRepository: LlmInteractionRepository,
+    actionExecutionRepository: ActionExecutionRepository,
     workflowDefinitionRepository: WorkflowDefinitionRepository,
     taskRepository: TaskRepository,
     onBack: () -> Unit
 ) {
     val transcripts by transcriptRepository.getAllTranscripts().collectAsStateWithLifecycle(initialValue = emptyList())
-    val llmInteractions by llmInteractionRepository.getAllInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
+    val llmInteractions by actionExecutionRepository.getLlmInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
     val tasks by taskRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
     val workflows by workflowDefinitionRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
     val workflowSeeder = WorkflowSeeder();
@@ -104,7 +103,7 @@ fun TranscriptsTab(transcripts: List<Transcript>) {
     }
 }
 @Composable
-fun LlmInteractionsTab(interactions: List<LlmInteraction>) {
+fun LlmInteractionsTab(interactions: List<ActionExecutionRepository.LlmInteractionView>) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault()) }
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(interactions) { interaction ->
