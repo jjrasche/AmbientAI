@@ -126,6 +126,36 @@ class WorkflowSeeder(context: Context) {
             enabled = true
         ))
 
+        repo.save(WorkflowDefinition(
+            name = "switch_task",
+            definition = """{
+  "triggers":["switch to","switch task","now working on","back to"],
+  "steps":[
+    {"action":"task.getNonCompleted","input":{},"output":"available"},
+    {"action":"control.if","condition":"${'$'}available.tasks.length === 0","then":[
+      {"action":"tts.speak","input":{"text":"No tasks available. Creating new task."}},
+      {"action":"task.start","input":{"name":"${'$'}transcript"},"output":"result"},
+      {"action":"tts.speak","input":{"text":"Started ${'$'}result.task.name"}}
+    ],"else":[
+      {"action":"task.matchTask","input":{"transcript":"${'$'}transcript","tasks":"${'$'}available.tasks"},"output":"match"},
+      {"action":"control.if","condition":"${'$'}match.taskId !== null","then":[
+        {"action":"task.resume","input":{"taskId":"${'$'}match.taskId"},"output":"result"},
+        {"action":"control.if","condition":"${'$'}result.success === true","then":[
+          {"action":"tts.speak","input":{"text":"Switched to ${'$'}result.task.name"}}
+        ],"else":[
+          {"action":"tts.speak","input":{"text":"${'$'}result.error"}}
+        ]}
+      ],"else":[
+        {"action":"tts.speak","input":{"text":"Couldn't match task. Creating new."}},
+        {"action":"task.start","input":{"name":"${'$'}transcript"},"output":"result"},
+        {"action":"tts.speak","input":{"text":"Started ${'$'}result.task.name"}}
+      ]}
+    ]}
+  ]
+}""".trimIndent(),
+            enabled = true
+        ))
+
         Log.d(TAG, "Seeded 4 task workflows")
     }
 }

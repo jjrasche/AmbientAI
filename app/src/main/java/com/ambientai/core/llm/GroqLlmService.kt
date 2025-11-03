@@ -5,7 +5,9 @@ import com.ambientai.BuildConfig
 import com.ambientai.data.LlmRequest
 import com.ambientai.data.LlmResponse
 import com.ambientai.data.Message
+import com.ambientai.workflow.UnknownActionException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,6 +28,50 @@ class GroqLlmService {
         private const val API_URL = "https://api.groq.com/openai/v1/chat/completions"
         private const val MODEL = "llama-3.1-8b-instant"
         private const val TIMEOUT_MS = 10000
+    }
+
+    fun execute(actionName: String, input: JSONObject): JSONObject {
+        return when (actionName) {
+            "llm.prompt" -> prompt(input)
+            else -> throw UnknownActionException(actionName)
+        }
+    }
+
+    /**
+     * Generate LLM response.
+     * Input: { "systemPrompt": "...", "userPrompt": "...", "temperature": 0.7, "maxTokens": 256 }
+     * Output: { "success": true, "response": "..." } | { "success": false, "error": "..." }
+     */
+    private fun prompt(input: JSONObject): JSONObject {
+        val systemPrompt = input.getString("systemPrompt")
+        val userPrompt = input.getString("userPrompt")
+        val temperature = input.optDouble("temperature", 0.7).toFloat()
+        val maxTokens = input.optInt("maxTokens", 256)
+
+        // Make synchronous call - we're already in a coroutine context from WorkflowExecutor
+        val result = runBlocking {
+            generateResponse(
+                systemPrompt = systemPrompt,
+                userPrompt = userPrompt,
+                temperature = temperature,
+                maxTokens = maxTokens
+            )
+        }
+
+        return result.fold(
+            onSuccess = { response ->
+                JSONObject().apply {
+                    put("success", true)
+                    put("response", response)
+                }
+            },
+            onFailure = { error ->
+                JSONObject().apply {
+                    put("success", false)
+                    put("error", error.message)
+                }
+            }
+        )
     }
 
     /**

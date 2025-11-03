@@ -43,6 +43,15 @@ class TextToSpeechService(
         }
     }
 
+    private fun applyPronunciationFixes(text: String): String {
+        var result = text
+
+        // JSON -> "jay-sahn"
+        result = result.replace(Regex("\\bJSON", RegexOption.IGNORE_CASE), "jay-sahn")
+
+        return result
+    }
+
     /**
      * Speak text asynchronously.
      * @param text Text to speak
@@ -78,8 +87,9 @@ class TextToSpeechService(
             }
 
             tts?.setOnUtteranceProgressListener(listener)
+            val processedText = applyPronunciationFixes(text)
 
-            val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
+            val result = tts?.speak(processedText, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
 
             if (result == TextToSpeech.ERROR) {
                 Log.e(TAG, "speak() returned ERROR")
