@@ -263,8 +263,14 @@ class WorkflowExecutor(private val context: Context) {
         for (i in 1 until parts.size) {
             val part = parts[i]
             current = when (current) {
+                is JSONObject -> {
+                    if (!current.has(part)) {
+                        throw MissingVariableException(parts.subList(0, i+1).joinToString("."))
+                    }
+                    current.get(part)
+                }
                 is Map<*, *> -> current[part]
-                    ?: throw MissingVariableException("${parts.subList(0, i+1).joinToString(".")}")
+                    ?: throw MissingVariableException(parts.subList(0, i+1).joinToString("."))
                 is List<*> -> {
                     val index = part.toIntOrNull()
                         ?: throw IllegalArgumentException("Invalid list index: $part")

@@ -9,7 +9,7 @@ import com.ambientai.data.repositories.WorkflowDefinitionRepository
  * Seeds initial workflows into database on first run.
  * Checks if workflows exist before inserting to avoid duplicates.
  */
-class WorkflowSeeder(context: Context) {
+class WorkflowSeeder(private val context: Context) {
 
     private val repo = WorkflowDefinitionRepository(context)
 
@@ -23,7 +23,7 @@ class WorkflowSeeder(context: Context) {
      * Seed workflows if not already seeded.
      * Safe to call multiple times - uses SharedPreferences flag.
      */
-    fun seedIfNeeded(context: Context) {
+    fun seedIfNeeded() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val alreadySeeded = prefs.getBoolean(KEY_SEEDED, false)
 
@@ -45,26 +45,6 @@ class WorkflowSeeder(context: Context) {
         }
     }
 
-    /**
-     * Force re-seed all workflows (overwrites existing).
-     * Use for development/testing only.
-     */
-    fun forceReseed(context: Context) {
-        Log.d(TAG, "Force reseeding workflows...")
-
-        // Delete all existing workflows
-        repo.getAll().forEach { repo.delete(it) }
-
-        // Seed fresh
-        seedTaskWorkflows()
-
-        // Update flag
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putBoolean(KEY_SEEDED, true).apply()
-
-        Log.d(TAG, "Force reseed complete: ${repo.count()} workflows")
-    }
-
     private fun seedTaskWorkflows() {
         // Start Task
         repo.save(WorkflowDefinition(
@@ -72,7 +52,8 @@ class WorkflowSeeder(context: Context) {
             definition = """{
   "triggers":["start task","working on","begin task"],
   "steps":[
-    {"action":"task.start","input":{"name":"${'$'}transcript"},"output":"result"},
+    {"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},
+    {"action":"task.start","input":{"name":"${'$'}taskName.response"},"output":"result"},
     {"action":"control.if","condition":"${'$'}result.success === true","then":[
     {"action":"tts.speak","input":{"text":"Started ${'$'}result.task.name"}}],"else":[
     {"action":"tts.speak","input":{"text":"${'$'}result.error"}}]}

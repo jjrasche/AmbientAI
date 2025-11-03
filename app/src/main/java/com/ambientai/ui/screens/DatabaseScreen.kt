@@ -17,6 +17,7 @@ import com.ambientai.data.repositories.LlmInteractionRepository
 import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
+import com.ambientai.util.toHumanDuration
 import kotlinx.coroutines.flow.flowOf
 import java.text.SimpleDateFormat
 import java.util.*
@@ -331,30 +332,11 @@ fun TasksTab(tasks: List<Task>) {
                         )
                     }
                     Text(
-                        text = "Total time: ${formatDuration(task.totalElapsedMs())}",
+                        text = "Total time: ${task.totalElapsedMs().toHumanDuration()}",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
         }
-    }
-}
-
-private fun formatDuration(ms: Long): String {
-    val seconds = ms / 1000
-    val minutes = seconds / 60
-    val hours = minutes / 60
-
-    return when {
-        hours > 0 -> {
-            val remainingMinutes = minutes % 60
-            if (remainingMinutes > 0) {
-                "$hours hours $remainingMinutes minutes"
-            } else {
-                "$hours hours"
-            }
-        }
-        minutes > 0 -> "$minutes minutes"
-        else -> "$seconds seconds"
     }
 }

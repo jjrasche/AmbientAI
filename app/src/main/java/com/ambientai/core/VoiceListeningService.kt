@@ -143,7 +143,7 @@ class VoiceListeningService : Service() {
     private fun initializeComponents() {
         serviceScope.launch {
             try {
-                // Initialize TTS
+                // Initialize TTS FIRST and WAIT for it
                 ttsService = TextToSpeechService(
                     context = applicationContext,
                     onError = ::handleTtsError
@@ -151,17 +151,18 @@ class VoiceListeningService : Service() {
                 val ttsReady = ttsService?.initialize() ?: false
 
                 if (!ttsReady) {
-                    Log.e(TAG, "TTS initialization failed")
+                    Log.e(TAG, "TTS initialization failed - service may not work properly")
+                } else {
+                    Log.d(TAG, "TTS initialized successfully")
                 }
 
-                // Initialize wake word detector
+                // Now initialize other components
                 wakeWordDetector = WakeWordDetector(
                     context = applicationContext,
                     onWakeWordDetected = ::handleWakeWord
                 )
                 wakeWordDetector?.initialize()
 
-                // Initialize speech recognizer
                 speechRecognizer = SpeechRecognizer(
                     context = applicationContext,
                     onPartialTranscript = ::handlePartialTranscript,
@@ -197,7 +198,7 @@ class VoiceListeningService : Service() {
         wakeWordDetector?.stop()
         updateNotification("Listening...")
         serviceScope.launch {
-            delay(200)
+            delay(0)
             speechRecognizer?.start()
         }
     }

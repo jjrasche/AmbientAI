@@ -110,8 +110,10 @@ class TextToSpeechService(
      */
     suspend fun speak(text: String): Boolean {
         if (!isInitialized || tts == null) {
-            Log.e(TAG, "TTS not initialized")
-            return false
+            Log.w(TAG, "TTS not initialized, initializing now...")
+            runBlocking {
+                initialize()
+            }
         }
 
         if (text.isBlank()) {

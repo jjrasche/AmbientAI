@@ -1,8 +1,10 @@
 package com.ambientai.core.task
 
 import android.content.Context
+import android.util.Log
 import com.ambientai.data.entities.TaskStatus
 import com.ambientai.data.repositories.TaskRepository
+import com.ambientai.util.toHumanDuration
 import org.json.JSONObject
 import org.json.JSONArray
 
@@ -14,6 +16,9 @@ class TaskManager(context: Context) {
 
     private val repo = TaskRepository(context)
 
+    companion object {
+        private const val TAG = "TaskManager"
+    }
     /**
      * Execute a task action.
      * Input/output is JSONObject for workflow compatibility.
@@ -64,14 +69,25 @@ class TaskManager(context: Context) {
             return errorResult("Task name cannot be empty")
         }
 
-        return repo.startTask(name).fold(
-            onSuccess = { task ->
-                successResult(mapOf("task" to taskToMap(task)))
-            },
-            onFailure = { error ->
-                errorResult(error.message ?: "Failed to start task")
+        // Check for existing active task
+        val existingActive = repo.getActive()
+        if (existingActive != null) {
+            // Auto-pause the active task
+            try {
+                repo.pauseTask(existingActive)
+                Log.d(TAG, "Auto-paused existing task: ${existingActive.name}")
+            } catch (e: Exception) {
+                return errorResult("Failed to pause existing task: ${e.message}")
             }
-        )
+        }
+
+        // Start new task
+        return try {
+            val task = repo.startTask(name)
+            successResult(mapOf("task" to taskToMap(task)))
+        } catch (e: Exception) {
+            errorResult(e.message ?: "Failed to start task")
+        }
     }
 
     /**
@@ -144,7 +160,7 @@ class TaskManager(context: Context) {
             successResult(mapOf(
                 "hasActive" to true,
                 "name" to task.name,
-                "elapsed" to repo.formatDuration(elapsedMs),
+                "elapsed" to elapsedMs.toHumanDuration(),
                 "elapsedMs" to elapsedMs,
                 "sessionCount" to repo.getSessionCount(task.id)
             ))
@@ -209,7 +225,7 @@ class TaskManager(context: Context) {
             "createdAt" to task.createdAt,
             "completedAt" to task.completedAt,
             "elapsedMs" to task.totalElapsedMs(),
-            "elapsed" to repo.formatDuration(task.totalElapsedMs()),
+            "elapsed" to task.totalElapsedMs().toHumanDuration(),
             "sessionCount" to repo.getSessionCount(task.id)
         )
     }

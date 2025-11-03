@@ -18,7 +18,7 @@ class AmbientAIApp : Application() {
             .build()
 
         // Seed initial workflows on first run
-        WorkflowSeeder(applicationContext).seedIfNeeded(applicationContext)
+        WorkflowSeeder(applicationContext).seedIfNeeded()
     }
 
     override fun onTerminate() {
