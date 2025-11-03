@@ -46,98 +46,60 @@ class WorkflowSeeder(private val context: Context) {
     }
 
     private fun seedTaskWorkflows() {
-        // Start Task
-        repo.save(WorkflowDefinition(
-            name = "start_task",
-            definition = """{
+        val llmPullNameFromTranscriptAction = """{"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},"""
+        repo.save(WorkflowDefinition(name = "start_task", enabled = true, definition = """{
   "triggers":["start task","working on","begin task"],
   "steps":[
-    {"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},
-    {"action":"task.start","input":{"name":"${'$'}taskName.response"},"output":"result"},
-    {"action":"control.if","condition":"${'$'}result.success === true","then":[
-    {"action":"tts.speak","input":{"text":"Started ${'$'}result.task.name"}}],"else":[
-    {"action":"tts.speak","input":{"text":"${'$'}result.error"}}]}
+    $llmPullNameFromTranscriptAction
+    {"action":"task.start","input":{"name":"${'$'}taskName.response"},"output":"task"},
+    {"action":"tts.speak","input":{"text":"Started ${'$'}task.name"}}
   ]
-}""".trimIndent(),
-            enabled = true
-        ))
-
-        // Pause Task
-        repo.save(WorkflowDefinition(
-            name = "pause_task",
-            definition = """{
+}""".trimIndent()))
+        repo.save(WorkflowDefinition(name = "pause_task", enabled = true, definition = """{
   "triggers":["pause task","stop task","taking a break"],
   "steps":[
-    {"action":"task.pause","input":{},"output":"result"},
-    {"action":"control.if","condition":"${'$'}result.success === true","then":[
-    {"action":"tts.speak","input":{"text":"Paused ${'$'}result.task.name"}}],"else":[
-    {"action":"tts.speak","input":{"text":"${'$'}result.error"}}]}
+    {"action":"task.pause","output":"task"},
+    {"action":"tts.speak","input":{"text":"Paused ${'$'}task.name"}}
   ]
-}""".trimIndent(),
-            enabled = true
-        ))
-
-        // Complete Task
-        repo.save(WorkflowDefinition(
-            name = "complete_task",
-            definition = """{
+}""".trimIndent()))
+        repo.save(WorkflowDefinition(name = "complete_task", enabled = true, definition = """{
   "triggers":["complete task","done with task","finished task"],
   "steps":[
-    {"action":"task.complete","input":{},"output":"result"},
-    {"action":"control.if","condition":"${'$'}result.success === true","then":[
-    {"action":"tts.speak","input":{"text":"Completed ${'$'}result.task.name"}}],"else":[
-    {"action":"tts.speak","input":{"text":"${'$'}result.error"}}]}
+    {"action":"task.complete","output":"task"},
+    {"action":"tts.speak","input":{"text":"Completed ${'$'}task.name"}}
   ]
-}""".trimIndent(),
-            enabled = true
-        ))
-
-        // Task Status
-        repo.save(WorkflowDefinition(
-            name = "task_status",
-            definition = """{
+}""".trimIndent()))
+        repo.save(WorkflowDefinition(name = "task_status", enabled = true, definition = """{
   "triggers":["current task","what am I working on","task status","how long"],
   "steps":[
-    {"action":"task.getActive","input":{},"output":"task"},
-    {"action":"control.if","condition":"${'$'}task.status === 'Active'","then":[
-    {"action":"tts.speak","input":{"text":"${'$'}task.elapsed on ${'$'}task.name"}}],"else":[
-    {"action":"tts.speak","input":{"text":"No active task"}}]}
+    {"action":"task.getActive","output":"task"},
+    {"action":"tts.speak","input":{"text":"${'$'}task.elapsed on ${'$'}task.name"}}
   ]
-}""".trimIndent(),
-            enabled = true
-        ))
-
-        repo.save(WorkflowDefinition(
-            name = "switch_task",
-            definition = """{
+}""".trimIndent()))
+        repo.save(WorkflowDefinition(name = "switch_task", enabled = true, definition = """{
   "triggers":["switch to","switch task","now working on","back to"],
   "steps":[
-    {"action":"task.getNonCompleted","input":{},"output":"available"},
+    {"action":"task.getNonCompleted","output":"available"},
     {"action":"control.if","condition":"${'$'}available.tasks.length === 0","then":[
       {"action":"tts.speak","input":{"text":"No tasks available. Creating new task."}},
-      {"action":"task.start","input":{"name":"${'$'}transcript"},"output":"result"},
-      {"action":"tts.speak","input":{"text":"Started ${'$'}result.task.name"}}
+      $llmPullNameFromTranscriptAction
+      {"action":"task.start","input":{"name":"${'$'}taskName.response"},"output":"task"},
+      {"action":"tts.speak","input":{"text":"Started ${'$'}task.name"}}
     ],"else":[
-      {"action":"llm.prompt","input":{"systemPrompt":"You are a task matcher. Given a user's voice input and a list of tasks, determine which task they're referring to. Match on partial names, keywords, or descriptions. Handle phrases like 'previous task', 'last one', 'the bug thing'. If no clear match, return null. Return ONLY valid JSON. Output format: {\"taskId\": <id or null>, \"reason\": \"brief explanation\"}","userPrompt":" \"${'$'}transcript\"\n\nAvailable tasks:\n${'$'}available.tasks\n\nWhich task are they referring to?","temperature":0.3,"maxTokens":50},"output":"llmResponse"},
-      {"action":"json.parse","input":{"text":"${'$'}llmResponse.response","schema":{"taskId":"number | null","reason":"string"}},"output":"match"},
-      {"action":"control.if","condition":"${'$'}match.taskId !== null","then":[
-        {"action":"task.resume","input":{"taskId":"${'$'}match.taskId"},"output":"result"},
-        {"action":"control.if","condition":"${'$'}result.success === true","then":[
-          {"action":"tts.speak","input":{"text":"Switched to ${'$'}result.task.name"}}
-        ],"else":[
-          {"action":"tts.speak","input":{"text":"${'$'}result.error"}}
-        ]}
+      {"action":"llm.prompt","input":{"systemPrompt":"You are a task matcher. Given a user's voice input and a list of tasks, determine which task they're referring to. Return ONLY valid JSON. Output format: {\"taskId\": <id or null>, \"reason\": \"brief explanation\"}","userPrompt":"${'$'}transcript\n\nAvailable tasks:\n${'$'}available.tasks","temperature":0.3,"maxTokens":50},"output":"llmResponse"},
+      {"action":"control.if","condition":"${'$'}llmResponse.response.taskId !== null","then":[
+        {"action":"task.resume","input":{"taskId":"${'$'}llmResponse.response.taskId"},"output":"task"},
+        {"action":"tts.speak","input":{"text":"Switched to ${'$'}task.name"}}
       ],"else":[
         {"action":"tts.speak","input":{"text":"Couldn't match task. Creating new."}},
-        {"action":"task.start","input":{"name":"${'$'}transcript"},"output":"result"},
-        {"action":"tts.speak","input":{"text":"Started ${'$'}result.task.name"}}
+        $llmPullNameFromTranscriptAction
+        {"action":"task.start","input":{"name":"${'$'}taskName.response"},"output":"task"},
+        {"action":"tts.speak","input":{"text":"Started ${'$'}task.name"}}
       ]}
     ]}
   ]
-}""".trimIndent(),
-            enabled = true
-        ))
+}""".trimIndent()))
 
-        Log.d(TAG, "Seeded 4 task workflows")
+        Log.d(TAG, "Seeded 5 task workflows")
     }
 }

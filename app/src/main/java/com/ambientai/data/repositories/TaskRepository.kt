@@ -72,6 +72,13 @@ class TaskRepository(context: Context) {
         sessions.forEach { sessionBox.remove(it) }
         return taskBox.remove(taskId)
     }
+    fun deleteAll(): Long {
+        val count = taskBox.count()
+        sessionBox.removeAll()
+        taskBox.removeAll()
+        return count
+    }
+
     fun count(): Long {
         return taskBox.count()
     }

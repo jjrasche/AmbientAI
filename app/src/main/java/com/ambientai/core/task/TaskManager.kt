@@ -14,7 +14,7 @@ class TaskManager(context: Context) {
             "task.pause" -> pause()
             "task.complete" -> complete()
             "task.getActive" -> getActive()
-            "task.getNonCompleted" -> getNonCompleted(input)
+            "task.getNonCompleted" -> getNonCompleted()
             else -> throw Exception("Unknown action: $actionName")
         }
     }
@@ -36,7 +36,7 @@ class TaskManager(context: Context) {
     private fun getActive(): JSONObject {
         return JSONObject(taskToMap(repo.getActive()))
     }
-    private fun getNonCompleted(input: JSONObject): JSONObject {
+    private fun getNonCompleted(): JSONObject {
         val allTasks = repo.getByStatus(TaskStatus.ACTIVE) + repo.getByStatus(TaskStatus.PAUSED)
         val tasksList = allTasks.map { taskToMap(it) }
         return JSONObject(mapOf("tasks" to tasksList))
