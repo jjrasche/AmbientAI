@@ -98,9 +98,9 @@ class WorkflowSeeder(private val context: Context) {
             definition = """{
   "triggers":["current task","what am I working on","task status","how long"],
   "steps":[
-    {"action":"task.status","input":{},"output":"status"},
-    {"action":"control.if","condition":"${'$'}status.hasActive === true","then":[
-    {"action":"tts.speak","input":{"text":"${'$'}status.elapsed on ${'$'}status.name"}}],"else":[
+    {"action":"task.getActive","input":{},"output":"task"},
+    {"action":"control.if","condition":"${'$'}task.status === 'Active'","then":[
+    {"action":"tts.speak","input":{"text":"${'$'}task.elapsed on ${'$'}task.name"}}],"else":[
     {"action":"tts.speak","input":{"text":"No active task"}}]}
   ]
 }""".trimIndent(),

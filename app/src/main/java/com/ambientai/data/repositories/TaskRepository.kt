@@ -14,18 +14,19 @@ import io.objectbox.query.OrderFlags
 class TaskRepository(context: Context) {
     private val taskBox: Box<Task> = AmbientAIApp.boxStore.boxFor()
     private val sessionBox: Box<TaskSession> = AmbientAIApp.boxStore.boxFor()
-    fun startTask(name: String): Result<Task> {
+    fun startTask(name: String): Task {
         val now = System.currentTimeMillis()
         val task = Task(name = name, status = TaskStatus.ACTIVE, createdAt = now)
         taskBox.put(task)
         val session = TaskSession(taskId = task.id, startedAt = now)
         sessionBox.put(session)
-        return Result.success(task)
+        return task
     }
-    fun pauseTask(task: Task): Task {
-        val session = getCurrentSession(task.id) ?: throw IllegalStateException("No active session for task ${task.id}")
-        session.endedAt = System.currentTimeMillis()
-        sessionBox.put(session)
+    fun pauseTask(): Task {
+        val task = getActive()
+        val currentSession = task.sessions?.get(0) ?: throw IllegalStateException("No active session for task ${task.id}")
+        currentSession.endedAt = System.currentTimeMillis()
+        sessionBox.put(currentSession)
         task.status = TaskStatus.PAUSED
         taskBox.put(task)
         return task
@@ -33,21 +34,8 @@ class TaskRepository(context: Context) {
     private fun getCurrentSession(taskId: Long): TaskSession? {
         return sessionBox.query(TaskSession_.taskId.equal(taskId)).isNull(TaskSession_.endedAt).build().findFirst()
     }
-    fun resumeTask(taskId: Long): Task {
-        val task = taskBox.get(taskId) ?: throw Exception("Task not found")
-        if (task.status != TaskStatus.PAUSED) throw Exception("Task is not paused")
-        val existing = getActive()
-        if (existing != null) throw Exception("Task '${existing.name}' is already active")
-        // Create new session
-        val session = TaskSession( taskId = task.id,  startedAt = System.currentTimeMillis() )
-        sessionBox.put(session)
-        task.sessions?.add(session)
-        task.status = TaskStatus.ACTIVE
-        taskBox.put(task)
-        return task
-    }
     fun completeTask(): Task {
-        val task = getActive() ?: throw Exception("No active task")
+        val task = getActive()
         val session = task.currentSession()
         if (session != null) {
             session.endedAt = System.currentTimeMillis()
@@ -58,8 +46,8 @@ class TaskRepository(context: Context) {
         taskBox.put(task)
         return task
     }
-    fun getActive(): Task? {
-        return taskBox.query(Task_.status.equal(TaskStatus.ACTIVE.ordinal.toLong())).build().findFirst()
+    fun getActive(): Task {
+        return taskBox.query(Task_.status.equal(TaskStatus.ACTIVE.ordinal.toLong())).build().findFirst() ?: throw Exception("No active task")
     }
     fun getMostRecentPaused(): Task? {
         return taskBox.query(Task_.status.equal(TaskStatus.PAUSED.ordinal.toLong())).order(Task_.createdAt, OrderFlags.DESCENDING).build().findFirst()

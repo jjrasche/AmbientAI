@@ -474,9 +474,3 @@ sealed class WorkflowResult {
     data class Failure(val error: String) : WorkflowResult()
 }
 class UnknownActionException(actionName: String) : Exception("Unknown action: $actionName")
-
-data class ActionResult(
-    val success: Boolean,
-    val data: Map<String, Any?> = emptyMap(),
-    val error: String? = null
-)
