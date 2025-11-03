@@ -1,6 +1,7 @@
 package com.ambientai
 
 import android.app.Application
+import com.ambientai.data.WorkflowSeeder
 import com.ambientai.data.entities.MyObjectBox
 import io.objectbox.BoxStore
 
@@ -15,6 +16,9 @@ class AmbientAIApp : Application() {
         boxStore = MyObjectBox.builder()
             .androidContext(applicationContext)
             .build()
+
+        // Seed initial workflows on first run
+        WorkflowSeeder(applicationContext).seedIfNeeded(applicationContext)
     }
 
     override fun onTerminate() {
