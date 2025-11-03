@@ -137,7 +137,8 @@ class WorkflowSeeder(context: Context) {
       {"action":"task.start","input":{"name":"${'$'}transcript"},"output":"result"},
       {"action":"tts.speak","input":{"text":"Started ${'$'}result.task.name"}}
     ],"else":[
-      {"action":"task.matchTask","input":{"transcript":"${'$'}transcript","tasks":"${'$'}available.tasks"},"output":"match"},
+      {"action":"llm.prompt","input":{"systemPrompt":"You are a task matcher. Given a user's voice input and a list of tasks, determine which task they're referring to. Match on partial names, keywords, or descriptions. Handle phrases like 'previous task', 'last one', 'the bug thing'. If no clear match, return null. Return ONLY valid JSON. Output format: {\"taskId\": <id or null>, \"reason\": \"brief explanation\"}","userPrompt":" \"${'$'}transcript\"\n\nAvailable tasks:\n${'$'}available.tasks\n\nWhich task are they referring to?","temperature":0.3,"maxTokens":50},"output":"llmResponse"},
+      {"action":"json.parse","input":{"text":"${'$'}llmResponse.response","schema":{"taskId":"number | null","reason":"string"}},"output":"match"},
       {"action":"control.if","condition":"${'$'}match.taskId !== null","then":[
         {"action":"task.resume","input":{"taskId":"${'$'}match.taskId"},"output":"result"},
         {"action":"control.if","condition":"${'$'}result.success === true","then":[

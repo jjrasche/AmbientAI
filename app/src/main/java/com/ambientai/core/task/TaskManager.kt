@@ -3,19 +3,12 @@ package com.ambientai.core.task
 import android.content.Context
 import com.ambientai.data.entities.TaskStatus
 import com.ambientai.data.repositories.TaskRepository
-
-/**
- * Standard result wrapper for all actions.
- */
-data class ActionResult(
-    val success: Boolean,
-    val data: Map<String, Any?> = emptyMap(),
-    val error: String? = null
-)
+import org.json.JSONObject
+import org.json.JSONArray
 
 /**
  * Actions for task management in workflows.
- * Wraps TaskRepository for workflow execution.
+ * Validates inputs and returns JSONObject for workflow compatibility.
  */
 class TaskManager(context: Context) {
 
@@ -23,68 +16,75 @@ class TaskManager(context: Context) {
 
     /**
      * Execute a task action.
-     * Returns ActionResult with standardized structure.
+     * Input/output is JSONObject for workflow compatibility.
      */
-    fun execute(actionName: String, input: Map<String, Any?>): ActionResult {
+    fun execute(actionName: String, input: JSONObject): JSONObject {
         return when (actionName) {
             "task.start" -> start(input)
-            "task.pause" -> pause()
+            "task.pause" -> pause(input)
             "task.resume" -> resume(input)
-            "task.complete" -> complete()
-            "task.status" -> status()
-            "task.getActive" -> getActive()
-            "task.getNonCompleted" -> getNonCompleted()
+            "task.complete" -> complete(input)
+            "task.status" -> status(input)
+            "task.getActive" -> getActive(input)
+            "task.getNonCompleted" -> getNonCompleted(input)
             "task.matchTask" -> matchTask(input)
-            else -> ActionResult(
-                success = false,
-                error = "Unknown action: $actionName"
-            )
+            else -> errorResult("Unknown action: $actionName")
+        }
+    }
+
+    private fun successResult(data: Map<String, Any?> = emptyMap()): JSONObject {
+        return JSONObject().apply {
+            put("success", true)
+            data.forEach { (k, v) ->
+                when (v) {
+                    is List<*> -> put(k, JSONArray(v))
+                    is Map<*, *> -> put(k, JSONObject(v as Map<String, Any?>))
+                    else -> put(k, v)
+                }
+            }
+        }
+    }
+
+    private fun errorResult(message: String): JSONObject {
+        return JSONObject().apply {
+            put("success", false)
+            put("error", message)
         }
     }
 
     /**
      * Start a new task.
      * Input: { "name": "task name" }
-     * Output: ActionResult with task data or error
      */
-    private fun start(input: Map<String, Any?>): ActionResult {
-        val name = input["name"] as? String
-            ?: return ActionResult(success = false, error = "Missing 'name' parameter")
+    private fun start(input: JSONObject): JSONObject {
+        val name = input.optString("name", null)
+            ?: return errorResult("Missing required field: name")
+
+        if (name.isBlank()) {
+            return errorResult("Task name cannot be empty")
+        }
 
         return repo.startTask(name).fold(
             onSuccess = { task ->
-                ActionResult(
-                    success = true,
-                    data = mapOf("task" to taskToMap(task))
-                )
+                successResult(mapOf("task" to taskToMap(task)))
             },
             onFailure = { error ->
-                ActionResult(
-                    success = false,
-                    error = error.message
-                )
+                errorResult(error.message ?: "Failed to start task")
             }
         )
     }
 
     /**
      * Pause currently active task.
-     * Input: {}
-     * Output: ActionResult with task data or error
+     * Input: {} (no parameters)
      */
-    private fun pause(): ActionResult {
+    private fun pause(input: JSONObject): JSONObject {
         return repo.pauseTask().fold(
             onSuccess = { task ->
-                ActionResult(
-                    success = true,
-                    data = mapOf("task" to taskToMap(task))
-                )
+                successResult(mapOf("task" to taskToMap(task)))
             },
             onFailure = { error ->
-                ActionResult(
-                    success = false,
-                    error = error.message
-                )
+                errorResult(error.message ?: "Failed to pause task")
             }
         )
     }
@@ -92,136 +92,110 @@ class TaskManager(context: Context) {
     /**
      * Resume a paused task.
      * Input: { "taskId": 123 } (optional - defaults to most recent paused)
-     * Output: ActionResult with task data or error
      */
-    private fun resume(input: Map<String, Any?>): ActionResult {
-        val taskId = if (input.containsKey("taskId")) {
-            (input["taskId"] as? Number)?.toLong()
-                ?: return ActionResult(success = false, error = "Invalid taskId")
+    private fun resume(input: JSONObject): JSONObject {
+        val taskId = if (input.has("taskId")) {
+            val id = input.optLong("taskId", -1)
+            if (id <= 0) {
+                return errorResult("Invalid taskId: must be positive number")
+            }
+            id
         } else {
             repo.getMostRecentPaused()?.id
-                ?: return ActionResult(success = false, error = "No paused task found")
+                ?: return errorResult("No paused task found")
         }
 
         return repo.resumeTask(taskId).fold(
             onSuccess = { task ->
-                ActionResult(
-                    success = true,
-                    data = mapOf("task" to taskToMap(task))
-                )
+                successResult(mapOf("task" to taskToMap(task)))
             },
             onFailure = { error ->
-                ActionResult(
-                    success = false,
-                    error = error.message
-                )
+                errorResult(error.message ?: "Failed to resume task")
             }
         )
     }
 
     /**
      * Complete currently active task.
-     * Input: {}
-     * Output: ActionResult with task data or error
+     * Input: {} (no parameters)
      */
-    private fun complete(): ActionResult {
+    private fun complete(input: JSONObject): JSONObject {
         return repo.completeTask().fold(
             onSuccess = { task ->
-                ActionResult(
-                    success = true,
-                    data = mapOf("task" to taskToMap(task))
-                )
+                successResult(mapOf("task" to taskToMap(task)))
             },
             onFailure = { error ->
-                ActionResult(
-                    success = false,
-                    error = error.message
-                )
+                errorResult(error.message ?: "Failed to complete task")
             }
         )
     }
 
     /**
      * Get status of currently active task.
-     * Input: {}
-     * Output: ActionResult with status data
+     * Input: {} (no parameters)
      */
-    private fun status(): ActionResult {
+    private fun status(input: JSONObject): JSONObject {
         val task = repo.getActive()
 
         return if (task == null) {
-            ActionResult(
-                success = true,
-                data = mapOf("hasActive" to false)
-            )
+            successResult(mapOf("hasActive" to false))
         } else {
             val elapsedMs = task.totalElapsedMs()
-            ActionResult(
-                success = true,
-                data = mapOf(
-                    "hasActive" to true,
-                    "name" to task.name,
-                    "elapsed" to repo.formatDuration(elapsedMs),
-                    "elapsedMs" to elapsedMs,
-                    "sessionCount" to repo.getSessionCount(task.id)
-                )
-            )
+            successResult(mapOf(
+                "hasActive" to true,
+                "name" to task.name,
+                "elapsed" to repo.formatDuration(elapsedMs),
+                "elapsedMs" to elapsedMs,
+                "sessionCount" to repo.getSessionCount(task.id)
+            ))
         }
     }
 
     /**
      * Get currently active task.
-     * Input: {}
-     * Output: ActionResult with task data or empty
+     * Input: {} (no parameters)
      */
-    private fun getActive(): ActionResult {
+    private fun getActive(input: JSONObject): JSONObject {
         val task = repo.getActive()
 
         return if (task == null) {
-            ActionResult(
-                success = true,
-                data = mapOf("hasActive" to false)
-            )
+            successResult(mapOf("hasActive" to false))
         } else {
-            ActionResult(
-                success = true,
-                data = mapOf(
-                    "hasActive" to true,
-                    "task" to taskToMap(task)
-                )
-            )
+            successResult(mapOf(
+                "hasActive" to true,
+                "task" to taskToMap(task)
+            ))
         }
     }
 
     /**
-     * Get all non-completed tasks.
-     * Input: {}
-     * Output: ActionResult with list of tasks
+     * Get all non-completed tasks (active + paused).
+     * Input: {} (no parameters)
      */
-    private fun getNonCompleted(): ActionResult {
+    private fun getNonCompleted(input: JSONObject): JSONObject {
         val active = repo.getByStatus(TaskStatus.ACTIVE)
         val paused = repo.getByStatus(TaskStatus.PAUSED)
         val allTasks = active + paused
 
         val tasksList = allTasks.map { taskToMap(it) }
 
-        return ActionResult(
-            success = true,
-            data = mapOf("tasks" to tasksList)
-        )
+        return successResult(mapOf("tasks" to tasksList))
     }
 
     /**
      * Match a task name from transcript (stub for future LLM integration).
-     * Input: { "transcript": "..." }
-     * Output: ActionResult with matched task or error
+     * Input: { "transcript": "...", "tasks": [...] }
      */
-    private fun matchTask(input: Map<String, Any?>): ActionResult {
+    private fun matchTask(input: JSONObject): JSONObject {
+        val transcript = input.optString("transcript", null)
+            ?: return errorResult("Missing required field: transcript")
+
+        if (!input.has("tasks")) {
+            return errorResult("Missing required field: tasks")
+        }
+
         // TODO: Implement LLM-based task name extraction
-        return ActionResult(
-            success = false,
-            error = "Not yet implemented"
-        )
+        return errorResult("Not yet implemented: task.matchTask")
     }
 
     /**

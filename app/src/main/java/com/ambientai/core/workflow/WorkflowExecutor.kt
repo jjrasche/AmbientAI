@@ -23,22 +23,12 @@ class WorkflowExecutor(private val context: Context) {
     private val executionRepo = WorkflowExecutionRepository(context)
     private val transcriptRepo = TranscriptRepository(context)
     private val llmService = GroqLlmService()
-    private var ttsService: TextToSpeechService? = null
+    private var tts = TextToSpeechService(context)
     private val tasks = TaskManager(context)
     private val llm = GroqLlmService()
 
     companion object {
         private const val TAG = "WorkflowExecutor"
-    }
-
-    /**
-     * Initialize TTS service if not already initialized.
-     */
-    private suspend fun ensureTtsInitialized() {
-        if (ttsService == null) {
-            ttsService = TextToSpeechService(context)
-            ttsService?.initialize()
-        }
     }
 
     /**
@@ -129,6 +119,7 @@ class WorkflowExecutor(private val context: Context) {
             val result = when (actionName.substringBefore(".")) {
                 "task" -> tasks.execute(actionName, resolvedInput)
                 "llm" -> llm.execute(actionName, resolvedInput)
+                "tts" -> tts.execute(actionName, resolvedInput)
                 else -> throw UnknownActionException(actionName)
             }
 
