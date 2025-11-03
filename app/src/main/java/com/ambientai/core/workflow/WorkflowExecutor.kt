@@ -24,6 +24,7 @@ class WorkflowExecutor(private val context: Context) {
     private val transcriptRepo = TranscriptRepository(context)
     private val llmService = GroqLlmService()
     private var ttsService: TextToSpeechService? = null
+    private val tasks = TaskManager(context)
 
     companion object {
         private const val TAG = "WorkflowExecutor"
@@ -125,7 +126,7 @@ class WorkflowExecutor(private val context: Context) {
 
             // 2. Dispatch to appropriate service based on action name
             val result = when (actionName.substringBefore(".")) {
-                "task" -> TaskManager.execute(actionName, resolvedInput)
+                "task" -> tasks.execute(actionName, resolvedInput)
 //                "llm" -> llmActions.execute(actionName, resolvedInput)
                 else -> throw UnknownActionException(actionName)
             }
@@ -480,3 +481,4 @@ sealed class WorkflowResult {
     object Success : WorkflowResult()
     data class Failure(val error: String) : WorkflowResult()
 }
+class UnknownActionException(actionName: String) : Exception("Unknown action: $actionName")
