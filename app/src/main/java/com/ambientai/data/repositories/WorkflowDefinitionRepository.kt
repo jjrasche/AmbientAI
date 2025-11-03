@@ -6,11 +6,12 @@ import com.ambientai.data.entities.WorkflowDefinition
 import com.ambientai.data.entities.WorkflowDefinition_
 import io.objectbox.Box
 import io.objectbox.kotlin.boxFor
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
-/**
- * Repository for CRUD operations on WorkflowDefinition entities.
- */
-class WorkflowDefinitionRepository(context: Context) {
+
+class WorkflowDefinitionRepository() {
 
     private val box: Box<WorkflowDefinition> = AmbientAIApp.boxStore.boxFor()
 
@@ -23,8 +24,10 @@ class WorkflowDefinitionRepository(context: Context) {
         return box.get(id)
     }
 
-    fun getAll(): List<WorkflowDefinition> {
-        return box.all
+    fun getAllTasks(): Flow<List<WorkflowDefinition>> = callbackFlow {
+        val query = box.query().build()
+        val subscription = query.subscribe().observer { data -> trySend(data) }
+        awaitClose { subscription.cancel(); }
     }
 
     fun getEnabled(): List<WorkflowDefinition> {
@@ -49,6 +52,9 @@ class WorkflowDefinitionRepository(context: Context) {
 
     fun delete(workflow: WorkflowDefinition) {
         box.remove(workflow)
+    }
+    fun deleteAll() {
+        box.removeAll()
     }
 
     fun count(): Long {

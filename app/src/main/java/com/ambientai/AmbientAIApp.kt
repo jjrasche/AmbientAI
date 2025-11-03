@@ -16,9 +16,6 @@ class AmbientAIApp : Application() {
         boxStore = MyObjectBox.builder()
             .androidContext(applicationContext)
             .build()
-
-        // Seed initial workflows on first run
-        WorkflowSeeder(applicationContext).seedIfNeeded()
     }
 
     override fun onTerminate() {

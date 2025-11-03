@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
         // Initialize repositories
         transcriptRepository = TranscriptRepository(applicationContext)
         llmInteractionRepository = LlmInteractionRepository(applicationContext)
-        workflowDefinitionRepository = WorkflowDefinitionRepository(applicationContext)
+        workflowDefinitionRepository = WorkflowDefinitionRepository()
         taskRepository = TaskRepository(applicationContext)
 
         checkPermissionsAndStart()

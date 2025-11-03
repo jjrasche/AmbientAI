@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ambientai.data.WorkflowSeeder
 import com.ambientai.data.entities.LlmInteraction
 import com.ambientai.data.entities.Task
 import com.ambientai.data.entities.Transcript
@@ -35,8 +36,9 @@ fun DatabaseScreen(
 ) {
     val transcripts by transcriptRepository.getAllTranscripts().collectAsStateWithLifecycle(initialValue = emptyList())
     val llmInteractions by llmInteractionRepository.getAllInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
-    val workflows = remember { workflowDefinitionRepository.getAll() }
-    val tasks = remember { taskRepository.getAll() }
+    val tasks by taskRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+    val workflows by workflowDefinitionRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+    val workflowSeeder = WorkflowSeeder();
     var selectedTab by remember { mutableStateOf(0) }
 
     Column(
@@ -51,24 +53,26 @@ fun DatabaseScreen(
         }
 
         TabRow(selectedTabIndex = selectedTab) {
-            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, modifier = Modifier.combinedClickable(
-                onClick = { },
-                onLongClick = { transcriptRepository.deleteAll() }
-            )){
-                Text(text = "Transcripts (${transcripts.size})",  modifier = Modifier.padding(16.dp) )
-            }
+            Tab(selected = selectedTab == 0,  onClick = { selectedTab = 0 } ) { Box(
+                modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { }, onLongClick = { transcriptRepository.deleteAll() })) {
+                Text(text = "Transcripts (${transcripts.size})", modifier = Modifier.padding(16.dp))
+            }}
             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 } ) {
                 Text(text = "LLM (${llmInteractions.size})",  modifier = Modifier.padding(16.dp) )
             }
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 } ) {
-                Text(text = "Workflows (${workflows.size})",  modifier = Modifier.padding(16.dp) )
+            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 },
+                modifier = Modifier.combinedClickable(
+                    onClick = { },
+                    onLongClick = { workflowDefinitionRepository.deleteAll() },
+                    onDoubleClick = { workflowSeeder.seed() }
+                )
+            ) {
+                Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp))
             }
-            Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, modifier = Modifier.combinedClickable(
-                onClick = { },
-                onLongClick = { taskRepository.deleteAll() }
-            )){
+            Tab(selected = selectedTab == 3,  onClick = { selectedTab = 3 } ) { Box(
+                modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { }, onLongClick = { taskRepository.deleteAll() })) {
                 Text(text = "Tasks (${tasks.size})",  modifier = Modifier.padding(16.dp) )
-            }
+            }}
         }
         Spacer(modifier = Modifier.height(16.dp))
         when (selectedTab) {

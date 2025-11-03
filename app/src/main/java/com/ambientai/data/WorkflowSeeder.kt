@@ -5,46 +5,11 @@ import android.util.Log
 import com.ambientai.data.entities.WorkflowDefinition
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
 
-/**
- * Seeds initial workflows into database on first run.
- * Checks if workflows exist before inserting to avoid duplicates.
- */
-class WorkflowSeeder(private val context: Context) {
-
-    private val repo = WorkflowDefinitionRepository(context)
-
-    companion object {
-        private const val TAG = "WorkflowSeeder"
-        private const val PREFS_NAME = "workflow_seeder"
-        private const val KEY_SEEDED = "workflows_seeded"
+class WorkflowSeeder() {
+    private val repo = WorkflowDefinitionRepository()
+    fun seed() {
+        seedTaskWorkflows()
     }
-
-    /**
-     * Seed workflows if not already seeded.
-     * Safe to call multiple times - uses SharedPreferences flag.
-     */
-    fun seedIfNeeded() {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val alreadySeeded = prefs.getBoolean(KEY_SEEDED, false)
-
-        if (alreadySeeded) {
-            Log.d(TAG, "Workflows already seeded, skipping")
-            return
-        }
-
-        Log.d(TAG, "Seeding initial workflows...")
-
-        try {
-            seedTaskWorkflows()
-
-            // Mark as seeded
-            prefs.edit().putBoolean(KEY_SEEDED, true).apply()
-            Log.d(TAG, "Successfully seeded ${repo.count()} workflows")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to seed workflows", e)
-        }
-    }
-
     private fun seedTaskWorkflows() {
         val llmPullNameFromTranscriptAction = """{"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},"""
         repo.save(WorkflowDefinition(name = "start_task", enabled = true, definition = """{
@@ -100,6 +65,6 @@ class WorkflowSeeder(private val context: Context) {
   ]
 }""".trimIndent()))
 
-        Log.d(TAG, "Seeded 5 task workflows")
+        Log.d("WorkflowSeeder", "Seeded 5 task workflows")
     }
 }

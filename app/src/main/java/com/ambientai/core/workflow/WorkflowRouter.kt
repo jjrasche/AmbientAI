@@ -12,7 +12,7 @@ import org.json.JSONObject
  */
 class WorkflowRouter(context: Context) {
 
-    private val workflowRepo = WorkflowDefinitionRepository(context)
+    private val workflowRepo = WorkflowDefinitionRepository()
     private var workflows: List<WorkflowDefinition> = emptyList()
 
     companion object {
