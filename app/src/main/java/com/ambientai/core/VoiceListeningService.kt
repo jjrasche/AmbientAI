@@ -105,7 +105,6 @@ class VoiceListeningService : Service() {
         wakeWordDetector?.cleanup()
         speechRecognizer?.cleanup()
         ttsService?.cleanup()
-        workflowExecutor?.cleanup()
         serviceScope.cancel()
     }
 

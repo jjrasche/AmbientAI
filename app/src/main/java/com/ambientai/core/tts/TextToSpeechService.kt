@@ -4,7 +4,9 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
+import org.json.JSONObject
 import java.util.*
 import kotlin.coroutines.resume
 
@@ -22,6 +24,55 @@ class TextToSpeechService(
     companion object {
         private const val TAG = "TextToSpeechService"
         private const val UTTERANCE_ID = "ambient_ai_utterance"
+    }
+
+    /**
+     * Execute a TTS action.
+     * Input/output is JSONObject for workflow compatibility.
+     */
+    fun execute(actionName: String, input: JSONObject): JSONObject {
+        return when (actionName) {
+            "tts.speak" -> speakAction(input)
+            else -> errorResult("Unknown action: $actionName")
+        }
+    }
+
+    private fun successResult(data: Map<String, Any?> = emptyMap()): JSONObject {
+        return JSONObject().apply {
+            put("success", true)
+            data.forEach { (k, v) -> put(k, v) }
+        }
+    }
+
+    private fun errorResult(message: String): JSONObject {
+        return JSONObject().apply {
+            put("success", false)
+            put("error", message)
+        }
+    }
+
+    /**
+     * Speak text action for workflow execution.
+     * Input: { "text": "..." }
+     */
+    private fun speakAction(input: JSONObject): JSONObject {
+        val text = input.optString("text", null)
+            ?: return errorResult("Missing required field: text")
+
+        if (text.isBlank()) {
+            return errorResult("Text cannot be empty")
+        }
+
+        // Make synchronous call - we're already in a coroutine context from WorkflowExecutor
+        val result = runBlocking {
+            speak(text)
+        }
+
+        return if (result) {
+            successResult(mapOf("spoken" to text))
+        } else {
+            errorResult("Failed to speak text")
+        }
     }
 
     /**

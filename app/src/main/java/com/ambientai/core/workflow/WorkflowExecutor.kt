@@ -457,15 +457,9 @@ class WorkflowExecutor(private val context: Context) {
                     else -> false
                 }
             }
+
             else -> throw IllegalArgumentException("Unknown operator: $operator")
         }
-    }
-
-    /**
-     * Clean up resources.
-     */
-    fun cleanup() {
-        ttsService?.cleanup()
     }
 }
 
