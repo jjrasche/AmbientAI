@@ -21,7 +21,6 @@ import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
 import com.ambientai.util.toHumanDuration
-import kotlinx.coroutines.flow.flowOf
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -60,14 +59,13 @@ fun DatabaseScreen(
             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 } ) {
                 Text(text = "LLM (${llmInteractions.size})",  modifier = Modifier.padding(16.dp) )
             }
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 },
-                modifier = Modifier.combinedClickable(
-                    onClick = { },
-                    onLongClick = { workflowDefinitionRepository.deleteAll() },
-                    onDoubleClick = { workflowSeeder.seed() }
-                )
-            ) {
-                Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp))
+            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
+                Box(modifier = Modifier.fillMaxWidth().combinedClickable(
+                            onClick = { },
+                            onLongClick = { workflowDefinitionRepository.deleteAll() },
+                            onDoubleClick = { workflowSeeder.seed() }
+                        )
+                ) { Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp)) }
             }
             Tab(selected = selectedTab == 3,  onClick = { selectedTab = 3 } ) { Box(
                 modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { }, onLongClick = { taskRepository.deleteAll() })) {

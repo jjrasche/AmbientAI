@@ -3,6 +3,7 @@ package com.ambientai.workflow
 import android.content.Context
 import android.util.Log
 import com.ambientai.core.llm.GroqLlmService
+import com.ambientai.core.search.SearchService
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.data.entities.WorkflowExecution
@@ -21,12 +22,10 @@ import org.json.JSONArray
 class WorkflowExecutor(private val context: Context) {
 
     private val executionRepo = WorkflowExecutionRepository(context)
-    private val transcriptRepo = TranscriptRepository(context)
-    private val llmService = GroqLlmService()
     private var tts = TextToSpeechService(context)
     private val tasks = TaskManager(context)
     private val llm = GroqLlmService()
-
+    private val search = SearchService()
     companion object {
         private const val TAG = "WorkflowExecutor"
     }
@@ -120,6 +119,7 @@ class WorkflowExecutor(private val context: Context) {
                 "task" -> tasks.execute(actionName, resolvedInput)
                 "llm" -> llm.execute(actionName, resolvedInput)
                 "tts" -> tts.execute(actionName, resolvedInput)
+                "search" -> search.execute(actionName, resolvedInput)
                 else -> throw UnknownActionException(actionName)
             }
 
