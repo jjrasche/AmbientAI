@@ -23,6 +23,7 @@ import com.ambientai.data.repositories.ActionExecutionRepository
 import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
+import com.ambientai.data.repositories.WorkflowExecutionRepository
 import com.ambientai.ui.screens.DatabaseScreen
 import com.ambientai.ui.screens.TimelineScreen
 
@@ -37,11 +38,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var actionExecutionRepository: ActionExecutionRepository
     private lateinit var workflowDefinitionRepository: WorkflowDefinitionRepository
     private lateinit var taskRepository: TaskRepository
+    private lateinit var workflowExecutionRepository: WorkflowExecutionRepository
 
-    // Navigation state
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
-
-    // Current transcript state (from service)
     private var currentTranscript by mutableStateOf("")
 
     sealed class Screen {
@@ -98,6 +97,7 @@ class MainActivity : ComponentActivity() {
         transcriptRepository = TranscriptRepository(applicationContext)
         actionExecutionRepository = ActionExecutionRepository(applicationContext)
         workflowDefinitionRepository = WorkflowDefinitionRepository()
+        workflowExecutionRepository = WorkflowExecutionRepository()
         taskRepository = TaskRepository(applicationContext)
 
         checkPermissionsAndStart()
@@ -118,6 +118,7 @@ class MainActivity : ComponentActivity() {
                             actionExecutionRepository = actionExecutionRepository,
                             workflowDefinitionRepository = workflowDefinitionRepository,
                             taskRepository = taskRepository,
+                            workflowExecutionRepository = workflowExecutionRepository, // ADD THIS
                             onBack = { currentScreen = Screen.Timeline }
                         )
                     }

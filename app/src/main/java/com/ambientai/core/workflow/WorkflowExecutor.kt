@@ -22,7 +22,7 @@ import org.json.JSONArray
  */
 class WorkflowExecutor(private val context: Context) {
 
-    private val executionRepo = WorkflowExecutionRepository(context)
+    private val executionRepo = WorkflowExecutionRepository()
     private var tts = TextToSpeechService(context)
     private val tasks = TaskManager(context)
     private val llm = GroqLlmService()

@@ -1,6 +1,7 @@
 package com.ambientai.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -9,18 +10,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ambientai.data.WorkflowSeeder
+import com.ambientai.data.entities.ActionExecution
 import com.ambientai.data.entities.Task
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.entities.WorkflowDefinition
+import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.repositories.ActionExecutionRepository
 import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
+import com.ambientai.data.repositories.WorkflowExecutionRepository
 import com.ambientai.util.toHumanDuration
 import java.text.SimpleDateFormat
 import java.util.*
@@ -32,12 +37,14 @@ fun DatabaseScreen(
     actionExecutionRepository: ActionExecutionRepository,
     workflowDefinitionRepository: WorkflowDefinitionRepository,
     taskRepository: TaskRepository,
+    workflowExecutionRepository: WorkflowExecutionRepository,
     onBack: () -> Unit
 ) {
     val transcripts by transcriptRepository.getAllTranscripts().collectAsStateWithLifecycle(initialValue = emptyList())
     val llmInteractions by actionExecutionRepository.getLlmInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
     val tasks by taskRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
     val workflows by workflowDefinitionRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+    val workflowExecutions by workflowExecutionRepository.getRecentExecutions().collectAsStateWithLifecycle(initialValue = emptyList())
     val workflowSeeder = WorkflowSeeder();
     var selectedTab by remember { mutableStateOf(0) }
 
@@ -72,6 +79,9 @@ fun DatabaseScreen(
                     onLongPress = { taskRepository.deleteAll() }
                 )
             }) { Text(text = "Tasks (${tasks.size})", modifier = Modifier.padding(16.dp)) }
+            Tab(selected = selectedTab == 4, onClick = { selectedTab = 4 }) {
+                Text(text = "Executions (${workflowExecutions.size})", modifier = Modifier.padding(16.dp))
+            }
         }
         Spacer(modifier = Modifier.height(16.dp))
         when (selectedTab) {
@@ -180,6 +190,211 @@ fun TasksTab(tasks: List<Task>) {
                     }
                     Text(text = "Total time: ${task.totalElapsedMs().toHumanDuration()}",  style = MaterialTheme.typography.bodySmall)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun WorkflowExecutionsTab(
+    executions: List<WorkflowExecution>,
+    workflowExecutionRepository: WorkflowExecutionRepository
+) {
+    val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault()) }
+    var expandedExecutionId by remember { mutableStateOf<Long?>(null) }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(executions) { execution ->
+            val isExpanded = expandedExecutionId == execution.id
+            val actions = remember(execution.id) {
+                workflowExecutionRepository.getActionsForExecution(execution.id)
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        expandedExecutionId = if (isExpanded) null else execution.id
+                    },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (execution.success) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        Color(0xFFFFEBEE) // Light red for failures
+                    }
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // Workflow execution header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "ID: ${execution.id}",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "${execution.executionTimeMs}ms",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            Text(
+                                text = if (execution.success) "✓" else "✗",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (execution.success) {
+                                    Color(0xFF4CAF50)
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = execution.workflowName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Text(
+                        text = dateFormat.format(Date(execution.timestamp)),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Trigger: ${execution.matchedTrigger}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Text(
+                        text = execution.transcript.take(100) +
+                                if (execution.transcript.length > 100) "..." else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (execution.errorMessage != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Error: ${execution.errorMessage}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Expandable actions section
+                    if (isExpanded && actions.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Actions (${actions.size})",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        actions.forEach { action ->
+                            ActionExecutionRow(action)
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+
+                    if (!isExpanded && actions.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "▼ ${actions.size} actions (tap to expand)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ActionExecutionRow(action: ActionExecution) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = if (action.success) {
+            Color(0xFFF1F8F4) // Light green
+        } else {
+            Color(0xFFFFF3F3) // Light red
+        },
+        shape = MaterialTheme.shapes.small
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = action.actionName,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "${action.latencyMs}ms",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (action.grade != null) {
+                        Text(
+                            text = "⭐${action.grade}",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = "Step: ${action.stepPath}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (!action.success && action.errorMessage != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Error: ${action.errorMessage}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            // Show input/output preview
+            if (action.inputJson.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Input: ${action.inputJson.take(80)}${if (action.inputJson.length > 80) "..." else ""}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (action.success && action.outputJson.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Output: ${action.outputJson.take(80)}${if (action.outputJson.length > 80) "..." else ""}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
