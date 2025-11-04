@@ -9,6 +9,33 @@ class WorkflowSeeder() {
     private val repo = WorkflowDefinitionRepository()
     fun seed() {
         seedTaskWorkflows()
+
+        repo.save(WorkflowDefinition(
+            name = "web_search",
+            enabled = true,
+            definition = """{
+  "triggers":["search for","look up","find information about","what is"],
+  "steps":[
+    {"action":"llm.prompt","input":{
+      "systemPrompt":"Extract the search query from the user's input. Return ONLY the search query, nothing else. Remove phrases like 'search for', 'look up', etc.",
+      "userPrompt":"${'$'}transcript",
+      "temperature":0.3,
+      "maxTokens":50
+    },"output":"searchQuery"},
+    {"action":"search.query","input":{
+      "query":"${'$'}searchQuery.response",
+      "numResults":3
+    },"output":"searchResults"},
+    {"action":"llm.prompt","input":{
+      "systemPrompt":"You are a helpful assistant. Answer the user's question based on the search results provided. Be concise and cite sources when relevant.",
+      "userPrompt":"Question: ${'$'}transcript\n\nSearch Results:\n${'$'}searchResults.snippets",
+      "temperature":0.7,
+      "maxTokens":200
+    },"output":"answer"},
+    {"action":"tts.speak","input":{"text":"${'$'}answer.response"}}
+  ]
+}""".trimIndent()
+        ))
     }
     private fun seedTaskWorkflows() {
         val llmPullNameFromTranscriptAction = """{"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},"""
@@ -67,4 +94,6 @@ class WorkflowSeeder() {
 
         Log.d("WorkflowSeeder", "Seeded 5 task workflows")
     }
+
+
 }

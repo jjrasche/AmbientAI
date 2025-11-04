@@ -29,7 +29,6 @@ class WorkflowDefinitionRepository() {
         val subscription = query.subscribe().observer { data -> trySend(data) }
         awaitClose { subscription.cancel(); }
     }
-
     fun getEnabled(): List<WorkflowDefinition> {
         return box.query(WorkflowDefinition_.enabled.equal(true))
             .build()

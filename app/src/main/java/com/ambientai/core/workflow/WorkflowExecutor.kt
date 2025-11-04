@@ -106,7 +106,7 @@ class WorkflowExecutor(private val context: Context) {
         stepPath: String
     ) {
         val actionName = step.getString("action")
-        val inputJson = step.getJSONObject("input")
+        val inputJson = step.optJSONObject("input") ?: JSONObject()
         val outputVar = step.optString("output", null)
 
         val startTime = System.currentTimeMillis()

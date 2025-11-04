@@ -2,12 +2,14 @@ package com.ambientai.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,25 +53,25 @@ fun DatabaseScreen(
         }
 
         TabRow(selectedTabIndex = selectedTab) {
-            Tab(selected = selectedTab == 0,  onClick = { selectedTab = 0 } ) { Box(
-                modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { }, onLongClick = { transcriptRepository.deleteAll() })) {
-                Text(text = "Transcripts (${transcripts.size})", modifier = Modifier.padding(16.dp))
-            }}
+            Tab(selected = selectedTab == 0,  onClick = { selectedTab = 0 }, modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = { taskRepository.deleteAll() }
+                )
+            }) { Text(text = "Transcripts (${transcripts.size})", modifier = Modifier.padding(16.dp)) }
             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 } ) {
                 Text(text = "LLM (${llmInteractions.size})",  modifier = Modifier.padding(16.dp) )
             }
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
-                Box(modifier = Modifier.fillMaxWidth().combinedClickable(
-                            onClick = { },
-                            onLongClick = { workflowDefinitionRepository.deleteAll() },
-                            onDoubleClick = { workflowSeeder.seed() }
-                        )
-                ) { Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp)) }
-            }
-            Tab(selected = selectedTab == 3,  onClick = { selectedTab = 3 } ) { Box(
-                modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { }, onLongClick = { taskRepository.deleteAll() })) {
-                Text(text = "Tasks (${tasks.size})",  modifier = Modifier.padding(16.dp) )
-            }}
+            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = { workflowDefinitionRepository.deleteAll() },
+                    onDoubleTap = { workflowSeeder.seed() }
+                )
+            }) { Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp)) }
+            Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, modifier = Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = { taskRepository.deleteAll() }
+                )
+            }) { Text(text = "Tasks (${tasks.size})", modifier = Modifier.padding(16.dp)) }
         }
         Spacer(modifier = Modifier.height(16.dp))
         when (selectedTab) {
