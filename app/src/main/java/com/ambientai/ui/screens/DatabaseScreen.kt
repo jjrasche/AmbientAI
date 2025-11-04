@@ -89,6 +89,7 @@ fun DatabaseScreen(
             1 -> LlmInteractionsTab(llmInteractions)
             2 -> WorkflowsTab(workflows)
             3 -> TasksTab(tasks)
+            4 -> WorkflowExecutionsTab(workflowExecutions, workflowExecutionRepository)
         }
     }
 }
