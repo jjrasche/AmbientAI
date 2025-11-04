@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import org.json.JSONObject
 
-class ActionExecutionRepository(context: Context) {
+class ActionExecutionRepository() {
 
     private val box: Box<ActionExecution> = AmbientAIApp.boxStore.boxFor()
 

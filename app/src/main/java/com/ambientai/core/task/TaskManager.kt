@@ -6,8 +6,8 @@ import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.util.toHumanDuration
 import org.json.JSONObject
 
-class TaskManager(context: Context) {
-    private val repo = TaskRepository(context)
+class TaskManager() {
+    private val repo = TaskRepository()
     fun execute(actionName: String, input: JSONObject): JSONObject {
         return when (actionName) {
             "task.start" -> start(input)

@@ -15,7 +15,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 
-class TaskRepository(context: Context) {
+class TaskRepository() {
     private val taskBox: Box<Task> = AmbientAIApp.boxStore.boxFor()
     private val sessionBox: Box<TaskSession> = AmbientAIApp.boxStore.boxFor()
 

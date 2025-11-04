@@ -83,8 +83,8 @@ class VoiceListeningService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        transcriptRepository = TranscriptRepository(applicationContext)
-        workflowRouter = WorkflowRouter(applicationContext)
+        transcriptRepository = TranscriptRepository()
+        workflowRouter = WorkflowRouter()
         workflowExecutor = WorkflowExecutor(applicationContext)
 
         initializeComponents()
@@ -221,8 +221,8 @@ class VoiceListeningService : Service() {
         transcriptRepository?.save(transcript)
         listeners.forEach { it.onTranscriptSaved(transcript) }
 
-        // Route to workflow
-        routeToWorkflow(text)
+        // Route to workflow, passing transcript ID
+        routeToWorkflow(text, transcript.id)
     }
 
     /**
@@ -230,12 +230,12 @@ class VoiceListeningService : Service() {
      * Execute matched workflow via WorkflowExecutor.
      * Handles all errors via TTS feedback.
      */
-    private fun routeToWorkflow(text: String) {
+    private fun routeToWorkflow(text: String, transcriptId: Long) {
         serviceScope.launch {
             try {
                 updateNotification("Processing...")
 
-                val match = workflowRouter?.route(text)
+                val match = workflowRouter?.route(text, transcriptId)
 
                 if (match == null) {
                     // No workflow matched

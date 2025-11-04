@@ -10,7 +10,7 @@ import org.json.JSONObject
  * Routes transcripts to workflows based on trigger phrase matching.
  * Uses exact phrase matching (case-insensitive) to find workflows.
  */
-class WorkflowRouter(context: Context) {
+class WorkflowRouter() {
 
     private val workflowRepo = WorkflowDefinitionRepository()
     private var workflows: List<WorkflowDefinition> = emptyList()
@@ -35,10 +35,11 @@ class WorkflowRouter(context: Context) {
      * Throws MultipleMatchException if multiple workflows match.
      *
      * @param transcript User's voice input
+     * @param transcriptId ID of the saved transcript
      * @return WorkflowMatch with initialized context, or null
      * @throws MultipleMatchException if multiple workflows match
      */
-    fun route(transcript: String): WorkflowMatch? {
+    fun route(transcript: String, transcriptId: Long): WorkflowMatch? {
         if (workflows.isEmpty()) {
             Log.w(TAG, "No workflows loaded")
             return null
@@ -63,12 +64,12 @@ class WorkflowRouter(context: Context) {
         return when {
             matches.isEmpty() -> {
                 Log.d(TAG, "No workflow matched, using conversational default")
-                createConversationalDefault(transcript)
+                createConversationalDefault(transcript, transcriptId)
             }
             matches.size == 1 -> {
                 val match = matches.first()
                 Log.d(TAG, "Matched workflow '${match.definition.name}' via trigger '${match.matchedTrigger}'")
-                createWorkflowMatch(match, transcript)
+                createWorkflowMatch(match, transcript, transcriptId)
             }
             else -> {
                 // Multiple workflows matched
@@ -83,7 +84,7 @@ class WorkflowRouter(context: Context) {
     }
 
 
-    private fun createConversationalDefault(transcript: String): WorkflowMatch {
+    private fun createConversationalDefault(transcript: String, transcriptId: Long): WorkflowMatch {
         // Create an inline workflow definition for conversational response
         val defaultWorkflow = WorkflowDefinition(
             id = -1, // Synthetic ID
@@ -110,6 +111,7 @@ class WorkflowRouter(context: Context) {
             matchedTrigger = "(default)"
         )
         context.variables["transcript"] = transcript
+        context.variables["transcriptId"] = transcriptId
 
         return WorkflowMatch(defaultWorkflow, context)
     }
@@ -150,7 +152,8 @@ class WorkflowRouter(context: Context) {
      */
     private fun createWorkflowMatch(
         candidate: WorkflowMatchCandidate,
-        transcript: String
+        transcript: String,
+        transcriptId: Long
     ): WorkflowMatch {
         val context = WorkflowExecutionContext(
             workflowId = candidate.definition.id,
@@ -161,6 +164,7 @@ class WorkflowRouter(context: Context) {
 
         // Initialize built-in variables
         context.variables["transcript"] = transcript
+        context.variables["transcriptId"] = transcriptId
 
         return WorkflowMatch(
             definition = candidate.definition,

@@ -20,10 +20,10 @@ import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.ActionExecutionRepository
+import com.ambientai.data.repositories.LogRepository
 import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
-import com.ambientai.data.repositories.WorkflowExecutionRepository
 import com.ambientai.ui.screens.DatabaseScreen
 import com.ambientai.ui.screens.TimelineScreen
 
@@ -38,9 +38,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var actionExecutionRepository: ActionExecutionRepository
     private lateinit var workflowDefinitionRepository: WorkflowDefinitionRepository
     private lateinit var taskRepository: TaskRepository
-    private lateinit var workflowExecutionRepository: WorkflowExecutionRepository
+    private lateinit var logRepository: LogRepository
 
+    // Navigation state
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
+
+    // Current transcript state (from service)
     private var currentTranscript by mutableStateOf("")
 
     sealed class Screen {
@@ -94,11 +97,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // Initialize repositories
-        transcriptRepository = TranscriptRepository(applicationContext)
-        actionExecutionRepository = ActionExecutionRepository(applicationContext)
+        transcriptRepository = TranscriptRepository()
+        actionExecutionRepository = ActionExecutionRepository()
         workflowDefinitionRepository = WorkflowDefinitionRepository()
-        workflowExecutionRepository = WorkflowExecutionRepository()
-        taskRepository = TaskRepository(applicationContext)
+        taskRepository = TaskRepository()
+        logRepository = LogRepository()
 
         checkPermissionsAndStart()
 
@@ -118,7 +121,7 @@ class MainActivity : ComponentActivity() {
                             actionExecutionRepository = actionExecutionRepository,
                             workflowDefinitionRepository = workflowDefinitionRepository,
                             taskRepository = taskRepository,
-                            workflowExecutionRepository = workflowExecutionRepository, // ADD THIS
+                            logRepository = logRepository,
                             onBack = { currentScreen = Screen.Timeline }
                         )
                     }

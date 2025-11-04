@@ -9,6 +9,7 @@ class WorkflowSeeder() {
     private val repo = WorkflowDefinitionRepository()
     fun seed() {
         seedTaskWorkflows()
+        seedLogWorkflow()
 
         repo.save(WorkflowDefinition(
             name = "web_search",
@@ -95,5 +96,26 @@ class WorkflowSeeder() {
         Log.d("WorkflowSeeder", "Seeded 5 task workflows")
     }
 
+    private fun seedLogWorkflow() {
+        repo.save(WorkflowDefinition(name = "log_entry", enabled = true, definition = """{
+  "triggers":["log"],
+  "steps":[
+    {"action":"llm.prompt","input":{
+      "systemPrompt":"Classify what's being logged and extract data.\n\nValid types: medication, food, supplement, activity, symptom, unknown\n\nReturn JSON:\n{\n  \"type\": \"<one of the valid types>\",\n  \"data\": {\n    // For medication: {\"name\": \"string\", \"dosage\": \"string\"}\n    // For food: {\"name\": \"string\", \"quantity\": \"string\", \"meal\": \"string\"}\n    // For supplement: {\"name\": \"string\", \"amount\": \"string\"}\n    // For activity: {\"name\": \"string\", \"duration\": \"string\"}\n    // For symptom: {\"name\": \"string\", \"severity\": \"string\"}\n    // Extract whatever fields make sense for the type\n  }\n}\n\nIf unclear, use type: \"unknown\" and capture what you can.",
+      "userPrompt":"${'$'}transcript",
+      "temperature":0.3,
+      "maxTokens":150
+    },"output":"classification"},
+    {"action":"log.write","input":{
+      "type":"${'$'}classification.response.type",
+      "data":"${'$'}classification.response.data",
+      "transcriptId":"${'$'}transcriptId"
+    },"output":"entry"},
+    {"action":"tts.speak","input":{"text":"Logged ${'$'}classification.response.type"}}
+  ]
+}""".trimIndent()))
+
+        Log.d("WorkflowSeeder", "Seeded log workflow")
+    }
 
 }

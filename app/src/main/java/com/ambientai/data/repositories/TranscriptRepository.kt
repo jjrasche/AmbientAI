@@ -18,7 +18,7 @@ import java.util.*
  * Repository for CRUD operations on Transcript entities.
  * Exposes Flow for reactive UI updates.
  */
-class TranscriptRepository(context: Context) {
+class TranscriptRepository() {
 
     private val box: Box<Transcript> = AmbientAIApp.boxStore.boxFor()
     private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)

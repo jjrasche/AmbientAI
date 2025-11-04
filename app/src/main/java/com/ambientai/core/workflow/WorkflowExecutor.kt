@@ -3,6 +3,7 @@ package com.ambientai.workflow
 import android.content.Context
 import android.util.Log
 import com.ambientai.core.llm.GroqLlmService
+import com.ambientai.core.log.LogManager
 import com.ambientai.core.search.SearchService
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.tts.TextToSpeechService
@@ -24,9 +25,11 @@ class WorkflowExecutor(private val context: Context) {
 
     private val executionRepo = WorkflowExecutionRepository()
     private var tts = TextToSpeechService(context)
-    private val tasks = TaskManager(context)
+    private val tasks = TaskManager()
     private val llm = GroqLlmService()
     private val search = SearchService()
+    private val logs = LogManager()
+
     companion object {
         private const val TAG = "WorkflowExecutor"
     }
@@ -106,7 +109,7 @@ class WorkflowExecutor(private val context: Context) {
         stepPath: String
     ) {
         val actionName = step.getString("action")
-        val inputJson = step.optJSONObject("input") ?: JSONObject()
+        val inputJson = step.getJSONObject("input")
         val outputVar = step.optString("output", null)
 
         val startTime = System.currentTimeMillis()
@@ -121,6 +124,7 @@ class WorkflowExecutor(private val context: Context) {
                 "llm" -> llm.execute(actionName, resolvedInput)
                 "tts" -> tts.execute(actionName, resolvedInput)
                 "search" -> search.execute(actionName, resolvedInput)
+                "log" -> logs.execute(actionName, resolvedInput)
                 else -> throw UnknownActionException(actionName)
             }
 
@@ -287,10 +291,6 @@ class WorkflowExecutor(private val context: Context) {
 
     class MissingVariableException(varName: String) : Exception("Variable not found: \$$varName")
 
-    /**
-     * Evaluate condition expression against context variables.
-     * Simple approach: string replacement + eval (for MVP).
-     */
     /**
      * Evaluate condition expression against context variables.
      * Supports: ===, !==, ==, !=, >, <, >=, <=, &&, ||, !
