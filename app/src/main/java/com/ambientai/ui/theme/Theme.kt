@@ -8,67 +8,75 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF6200EE),
+    // Subtle purple for transcripts with high contrast text
+    primary = Color(0xFF5E35B1),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFBB86FC),
-    onPrimaryContainer = Color(0xFF3700B3),
+    primaryContainer = Color(0xFFEDE7F6),
+    onPrimaryContainer = Color(0xFF311B92),
 
-    secondary = Color(0xFF03DAC6),
-    onSecondary = Color(0xFF000000),
-    secondaryContainer = Color(0xFF018786),
-    onSecondaryContainer = Color(0xFFB2F0ED),
+    // Teal for secondary actions
+    secondary = Color(0xFF00796B),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFE0F2F1),
+    onSecondaryContainer = Color(0xFF004D40),
 
-    tertiary = Color(0xFFFF6F00),
+    // Muted purple for LLM interactions
+    tertiary = Color(0xFF7E57C2),
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFFFB74D),
-    onTertiaryContainer = Color(0xFF000000),
+    tertiaryContainer = Color(0xFFF3E5F5),
+    onTertiaryContainer = Color(0xFF4A148C),
 
-    error = Color(0xFFB00020),
+    // Clear error red with good contrast
+    error = Color(0xFFC62828),
     onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF000000),
+    errorContainer = Color(0xFFFFEBEE),
+    onErrorContainer = Color(0xFFB71C1C),
 
-    background = Color(0xFFFFFBFE),
-    onBackground = Color(0xFF1C1B1F),
+    background = Color(0xFFFAFAFA),
+    onBackground = Color(0xFF1A1A1A),
 
-    surface = Color(0xFFFFFBFE),
-    onSurface = Color(0xFF1C1B1F),
-    surfaceVariant = Color(0xFFE7E0EC),
-    onSurfaceVariant = Color(0xFF49454F),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF1A1A1A),
+    surfaceVariant = Color(0xFFF5F5F5),
+    onSurfaceVariant = Color(0xFF424242),
 
-    outline = Color(0xFF79747E)
+    outline = Color(0xFF9E9E9E)
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFBB86FC),
+    // Subtle purple for transcripts with high contrast
+    primary = Color(0xFFB39DDB),
     onPrimary = Color(0xFF000000),
-    primaryContainer = Color(0xFF3700B3),
-    onPrimaryContainer = Color(0xFFEFDBFF),
+    primaryContainer = Color(0xFF2A1A4A),
+    onPrimaryContainer = Color(0xFFE8E0F5),
 
-    secondary = Color(0xFF03DAC6),
+    // Teal for secondary actions
+    secondary = Color(0xFF4DB6AC),
     onSecondary = Color(0xFF000000),
-    secondaryContainer = Color(0xFF018786),
-    onSecondaryContainer = Color(0xFFB2F0ED),
+    secondaryContainer = Color(0xFF1A3D3A),
+    onSecondaryContainer = Color(0xFFB2DFDB),
 
-    tertiary = Color(0xFFFFB74D),
+    // Muted purple for LLM interactions
+    tertiary = Color(0xFFCE93D8),
     onTertiary = Color(0xFF000000),
-    tertiaryContainer = Color(0xFFFF6F00),
-    onTertiaryContainer = Color(0xFFFFE0B2),
+    tertiaryContainer = Color(0xFF3A2448),
+    onTertiaryContainer = Color(0xFFF3E5F5),
 
-    error = Color(0xFFCF6679),
+    // Clear error red
+    error = Color(0xFFEF5350),
     onError = Color(0xFF000000),
-    errorContainer = Color(0xFFB00020),
-    onErrorContainer = Color(0xFFFFDAD6),
+    errorContainer = Color(0xFF4A1C1C),
+    onErrorContainer = Color(0xFFFFCDD2),
 
     background = Color(0xFF121212),
-    onBackground = Color(0xFFE1E1E1),
+    onBackground = Color(0xFFE8E8E8),
 
     surface = Color(0xFF1E1E1E),
-    onSurface = Color(0xFFE1E1E1),
-    surfaceVariant = Color(0xFF2C2C2C),
-    onSurfaceVariant = Color(0xFFCAC4D0),
+    onSurface = Color(0xFFE8E8E8),
+    surfaceVariant = Color(0xFF2A2A2A),
+    onSurfaceVariant = Color(0xFFC0C0C0),
 
-    outline = Color(0xFF938F99)
+    outline = Color(0xFF757575)
 )
 
 @Composable

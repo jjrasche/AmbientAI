@@ -20,10 +20,11 @@ import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.ActionExecutionRepository
-import com.ambientai.data.repositories.LogRepository
+import com.ambientai.data.repositories.LogEntryRepository
 import com.ambientai.data.repositories.TaskRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
+import com.ambientai.data.repositories.WorkflowExecutionRepository
 import com.ambientai.ui.screens.DatabaseScreen
 import com.ambientai.ui.screens.TimelineScreen
 import com.ambientai.ui.theme.AmbientAITheme
@@ -39,7 +40,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var actionExecutionRepository: ActionExecutionRepository
     private lateinit var workflowDefinitionRepository: WorkflowDefinitionRepository
     private lateinit var taskRepository: TaskRepository
-    private lateinit var logRepository: LogRepository
+    private lateinit var workflowExecutionRepository: WorkflowExecutionRepository
+    private lateinit var logEntryRepository: LogEntryRepository
 
     // Navigation state
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
@@ -102,7 +104,8 @@ class MainActivity : ComponentActivity() {
         actionExecutionRepository = ActionExecutionRepository()
         workflowDefinitionRepository = WorkflowDefinitionRepository()
         taskRepository = TaskRepository()
-        logRepository = LogRepository()
+        workflowExecutionRepository = WorkflowExecutionRepository()
+        logEntryRepository = LogEntryRepository()
 
         checkPermissionsAndStart()
 
@@ -122,7 +125,8 @@ class MainActivity : ComponentActivity() {
                             actionExecutionRepository = actionExecutionRepository,
                             workflowDefinitionRepository = workflowDefinitionRepository,
                             taskRepository = taskRepository,
-                            logRepository = logRepository,
+                            workflowExecutionRepository = workflowExecutionRepository,
+                            logEntryRepository = logEntryRepository,
                             onBack = { currentScreen = Screen.Timeline }
                         )
                     }
