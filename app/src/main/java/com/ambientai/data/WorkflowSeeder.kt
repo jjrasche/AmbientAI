@@ -10,6 +10,7 @@ class WorkflowSeeder() {
     fun seed() {
         seedTaskWorkflows()
         seedLogWorkflow()
+        seedNarrativeWorkflow()
 
         repo.save(WorkflowDefinition(
             name = "web_search",
@@ -116,6 +117,44 @@ class WorkflowSeeder() {
 }""".trimIndent()))
 
         Log.d("WorkflowSeeder", "Seeded log workflow")
+    }
+
+    private fun seedNarrativeWorkflow() {
+        repo.save(WorkflowDefinition(
+            name = "thinker",
+            enabled = true,
+            definition = """{
+  "triggers":{
+    "keywords":["update narrative","what do you know","tell me what you understand"],
+    "onWorkflowComplete":["start_task","pause_task","complete_task","switch_task","log_entry"]
+  },
+  "steps":[
+    {
+      "action":"state.gather",
+      "output":"state"
+    },
+    {
+      "action":"llm.prompt",
+      "input":{
+        "systemPrompt":"You are the internal reasoning system for an ambient AI assistant. Synthesize current state into a 2-3 sentence first-person narrative focusing on: what user is doing (GOALS), why and how it's going (REASONING), key patterns to remember (MEMORY). Be concise and focus on actionable understanding.",
+        "userPrompt":"Current state:\n${'$'}state",
+        "temperature":0.7,
+        "maxTokens":200
+      },
+      "output":"narrative"
+    },
+    {
+      "action":"narrative.save",
+      "input":{
+        "text":"${'$'}narrative.response",
+        "stateSnapshot":"${'$'}state"
+      }
+    }
+  ]
+}""".trimIndent()
+        ))
+
+        Log.d("WorkflowSeeder", "Seeded narrative workflow")
     }
 
 }

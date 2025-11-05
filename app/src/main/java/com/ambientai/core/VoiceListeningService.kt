@@ -170,11 +170,7 @@ class VoiceListeningService : Service() {
                     onRecognitionError = ::handleSttError
                 )
                 speechRecognizer?.initialize()
-
-                // Load workflows
-                workflowRouter?.loadWorkflows()
-                Log.d(TAG, "Workflows loaded")
-
+                reloadWorkflows()
                 Log.d(TAG, "All components initialized")
                 wakeWordDetector?.start()
                 updateNotification("Listening for wake word...")
@@ -190,6 +186,7 @@ class VoiceListeningService : Service() {
      */
     fun reloadWorkflows() {
         workflowRouter?.loadWorkflows()
+        workflowExecutor?.loadCompletionTriggers()
         Log.d(TAG, "Workflows reloaded")
     }
 

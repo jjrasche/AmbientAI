@@ -9,8 +9,7 @@ import com.ambientai.core.task.TaskManager
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.entities.ActionExecution
-import com.ambientai.data.entities.WorkflowDefinition
-import com.ambientai.data.repositories.TranscriptRepository
+import com.ambientai.data.repositories.WorkflowDefinitionRepository
 import com.ambientai.data.repositories.WorkflowExecutionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,14 +23,76 @@ import org.json.JSONArray
 class WorkflowExecutor(private val context: Context) {
 
     private val executionRepo = WorkflowExecutionRepository()
+    private val workflowRepo = WorkflowDefinitionRepository()
     private var tts = TextToSpeechService(context)
     private val tasks = TaskManager()
     private val llm = GroqLlmService()
     private val search = SearchService()
     private val logs = LogManager()
+    private var completionTriggers = mapOf<String, List<Long>>()
 
     companion object {
         private const val TAG = "WorkflowExecutor"
+    }
+
+    fun loadCompletionTriggers() {
+        val triggers = mutableMapOf<String, MutableList<Long>>()
+
+        workflowRepo.getEnabled().forEach { workflow ->
+            try {
+                val json = JSONObject(workflow.definition)
+                val triggersObj = json.optJSONObject("triggers") ?: return@forEach
+                val onComplete = triggersObj.optJSONArray("onWorkflowComplete") ?: return@forEach
+
+                // This workflow wants to trigger on completion of these workflows
+                for (i in 0 until onComplete.length()) {
+                    val workflowName = onComplete.getString(i)
+                    triggers.getOrPut(workflowName) { mutableListOf() }.add(workflow.id)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse completion triggers for ${workflow.name}", e)
+            }
+        }
+
+        completionTriggers = triggers
+        Log.d(TAG, "Loaded completion triggers: $completionTriggers")
+    }
+
+
+    private suspend fun triggerCompletionWorkflows(
+        completedWorkflowName: String,
+        originalContext: WorkflowExecutionContext
+    ) {
+        val triggeredWorkflowIds = completionTriggers[completedWorkflowName] ?: return
+
+        Log.d(TAG, "Workflow '$completedWorkflowName' completed, triggering ${triggeredWorkflowIds.size} workflows")
+
+        triggeredWorkflowIds.forEach { workflowId ->
+            try {
+                // Execute with context from original workflow
+                executeById(workflowId, originalContext.variables)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to trigger completion workflow $workflowId", e)
+            }
+        }
+    }
+
+    suspend fun executeById(
+        workflowId: Long,
+        contextOverride: Map<String, Any> = emptyMap()
+    ): WorkflowResult {
+        val definition = workflowRepo.getById(workflowId)
+            ?: return WorkflowResult.Failure("Workflow $workflowId not found")
+
+        val context = WorkflowExecutionContext(
+            workflowId = workflowId,
+            workflowName = definition.name,
+            transcript = "",
+            matchedTrigger = "(programmatic)"
+        )
+        context.variables.putAll(contextOverride)
+
+        return execute(WorkflowMatch(definition, context))
     }
 
     /**
@@ -66,7 +127,7 @@ class WorkflowExecutor(private val context: Context) {
             executionLog.success = true
             executionLog.executionTimeMs = System.currentTimeMillis() - startTime
             executionRepo.save(executionLog)
-
+            triggerCompletionWorkflows(match.definition.name, match.context)
             WorkflowResult.Success
 
         } catch (e: Exception) {

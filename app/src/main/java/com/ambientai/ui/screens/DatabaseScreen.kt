@@ -1,13 +1,16 @@
 package com.ambientai.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -64,31 +67,41 @@ fun DatabaseScreen(
         }
 
         TabRow(selectedTabIndex = selectedTab) {
-            Tab(selected = selectedTab == 0,  onClick = { selectedTab = 0 }, modifier = Modifier.pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = { taskRepository.deleteAll() }
-                )
-            }) { Text(text = "Transcripts (${transcripts.size})", modifier = Modifier.padding(16.dp)) }
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 } ) {
-                Text(text = "LLM (${llmInteractions.size})",  modifier = Modifier.padding(16.dp) )
-            }
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, modifier = Modifier.pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = { workflowDefinitionRepository.deleteAll() },
-                    onDoubleTap = { workflowSeeder.seed() }
-                )
-            }) { Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp)) }
-            Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, modifier = Modifier.pointerInput(Unit) {
-                detectTapGestures(
-                    onLongPress = { taskRepository.deleteAll() }
-                )
-            }) { Text(text = "Tasks (${tasks.size})", modifier = Modifier.padding(16.dp)) }
-            Tab(selected = selectedTab == 4, onClick = { selectedTab = 4 }) {
-                Text(text = "Executions (${workflowExecutions.size})", modifier = Modifier.padding(16.dp))
-            }
-            Tab(selected = selectedTab == 5, onClick = { selectedTab = 5 }) {
-                Text(text = "Log Entries (${logEntries.size})", modifier = Modifier.padding(16.dp))
-            }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                    onClick = { selectedTab = 0 })
+            ) { Text(text = "Transcripts (${transcripts.size})", modifier = Modifier.padding(16.dp)) }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                    onClick = { selectedTab = 1 })
+            ) { Text(text = "LLM (${llmInteractions.size})",  modifier = Modifier.padding(16.dp)) }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                    onClick = { selectedTab = 2 },
+                    onDoubleClick = { workflowSeeder.seed() },
+                    onLongClick = { workflowDefinitionRepository.deleteAll() }),
+            ) { Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp)) }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                    onClick = { selectedTab = 3 },
+                    onLongClick = { taskRepository.deleteAll() }),
+            ) { Text(text = "Tasks (${tasks.size})", modifier = Modifier.padding(16.dp)) }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                    onClick = { selectedTab = 4 }),
+//                    onLongClick = { workflowExecutionRepository.deleteAll(); actionExecutionRepository.deleteAll() }
+            ) { Text(text = "Executions (${workflowExecutions.size})", modifier = Modifier.padding(16.dp)) }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                    onClick = { selectedTab = 5 },
+                    onLongClick = { logEntryRepository.deleteAll() }),
+            ) { Text(text = "Log Entries (${logEntries.size})", modifier = Modifier.padding(16.dp)) }
         }
         Spacer(modifier = Modifier.height(16.dp))
         when (selectedTab) {
