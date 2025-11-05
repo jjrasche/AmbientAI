@@ -1,11 +1,9 @@
 package com.ambientai.data.repositories
 
-import android.content.Context
 import android.util.Log
 import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.LogEntry
 import com.ambientai.data.entities.LogEntry_
-import com.ambientai.data.entities.Transcript
 import io.objectbox.Box
 import io.objectbox.kotlin.boxFor
 import io.objectbox.query.OrderFlags
@@ -13,7 +11,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 
-class LogRepository() {
+class LogEntryRepository() {
     private val box: Box<LogEntry> = AmbientAIApp.boxStore.boxFor()
     companion object {
         private const val TAG = "LogRepository"

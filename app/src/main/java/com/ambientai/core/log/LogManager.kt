@@ -2,7 +2,7 @@ package com.ambientai.core.log
 
 import android.content.Context
 import com.ambientai.data.entities.LogEntry
-import com.ambientai.data.repositories.LogRepository
+import com.ambientai.data.repositories.LogEntryRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import org.json.JSONObject
 
@@ -11,7 +11,7 @@ import org.json.JSONObject
  * Handles writing and querying generic log entries.
  */
 class LogManager() {
-    private val repo = LogRepository()
+    private val repo = LogEntryRepository()
     private val transcriptRepo = TranscriptRepository()
 
     fun execute(actionName: String, input: JSONObject): JSONObject {
