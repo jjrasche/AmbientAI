@@ -21,7 +21,7 @@ class SpeechRecognizer(
     private val context: Context,
     private val onPartialTranscript: (text: String) -> Unit,
     private val onTranscriptReady: (text: String) -> Unit,
-    private val onError: (errorCode: Int) -> Unit
+    private val onRecognitionError: (errorCode: Int) -> Unit
 ) {
     private var speechRecognizer: AndroidSpeechRecognizer? = null
     private var pauseDetectionJob: Job? = null
@@ -140,10 +140,11 @@ class SpeechRecognizer(
 
         override fun onError(error: Int) {
             Log.e(TAG, "Recognition error: $error")
-
             if (isRecording) {
-                stop()
-                onError(error)
+                isRecording = false
+                pauseDetectionJob?.cancel()
+                speechRecognizer?.stopListening()
+                onRecognitionError(error)
             }
         }
 

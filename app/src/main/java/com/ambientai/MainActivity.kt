@@ -26,6 +26,7 @@ import com.ambientai.data.repositories.TranscriptRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
 import com.ambientai.ui.screens.DatabaseScreen
 import com.ambientai.ui.screens.TimelineScreen
+import com.ambientai.ui.theme.AmbientAITheme
 
 class MainActivity : ComponentActivity() {
 
@@ -106,7 +107,7 @@ class MainActivity : ComponentActivity() {
         checkPermissionsAndStart()
 
         setContent {
-            MaterialTheme {
+            AmbientAITheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     when (currentScreen) {
                         Screen.Timeline -> TimelineScreen(

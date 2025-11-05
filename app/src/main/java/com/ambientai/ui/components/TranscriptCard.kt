@@ -26,15 +26,15 @@ fun TranscriptCard(
     val dateFormat = SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault())
 
     val borderColor = if (transcript.excludeFromContext) {
-        Color(0xFFE57373) // Red for excluded
+        MaterialTheme.colorScheme.error
     } else {
-        Color(0xFF81C784) // Green for included
+        MaterialTheme.colorScheme.primary
     }
 
     val backgroundColor = if (transcript.excludeFromContext) {
-        Color(0xFFFFF3F3) // Light red background
+        MaterialTheme.colorScheme.errorContainer
     } else {
-        Color(0xFFF1F8F4) // Light green background
+        MaterialTheme.colorScheme.primaryContainer
     }
 
     Card(

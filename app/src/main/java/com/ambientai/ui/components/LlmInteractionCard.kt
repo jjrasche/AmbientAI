@@ -19,7 +19,7 @@ fun LlmInteractionCard(interaction: ActionExecutionRepository.LlmInteractionView
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF3E5F5) // Light purple for LLM
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
         )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -52,7 +52,7 @@ fun LlmInteractionCard(interaction: ActionExecutionRepository.LlmInteractionView
                             text = "⭐${interaction.grade}/5",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFFA726)
+                            color = MaterialTheme.colorScheme.tertiary
                         )
                     }
                 }

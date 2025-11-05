@@ -15,7 +15,7 @@ class WorkflowSeeder() {
             name = "web_search",
             enabled = true,
             definition = """{
-  "triggers":["search for","look up","find information about","what is"],
+  "triggers":["search for","look up"],
   "steps":[
     {"action":"llm.prompt","input":{
       "systemPrompt":"Extract the search query from the user's input. Return ONLY the search query, nothing else. Remove phrases like 'search for', 'look up', etc.",

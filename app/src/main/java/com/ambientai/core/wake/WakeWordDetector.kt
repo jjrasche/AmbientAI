@@ -130,6 +130,8 @@ class WakeWordDetector(
     private suspend fun detectWakeWord(porcupine: Porcupine) {
         val buffer = ShortArray(porcupine.frameLength)
 
+        Log.d(TAG, "Detection loop started, buffer size: ${buffer.size}")
+
         while (isListening.get() && coroutineContext.isActive) {
             val numRead = audioRecord?.read(buffer, 0, buffer.size) ?: -1
 
@@ -138,13 +140,16 @@ class WakeWordDetector(
                 break
             }
 
+            // ADD THIS - log every 100 frames to confirm it's reading
+            if (System.currentTimeMillis() % 10000 < 100) {
+                Log.d(TAG, "Still reading audio, numRead: $numRead")
+            }
+
             try {
                 val keywordIndex = porcupine.process(buffer)
 
                 if (keywordIndex >= 0) {
                     Log.d(TAG, "Wake word detected: Coral!")
-
-                    // Notify on main thread
                     withContext(Dispatchers.Main) {
                         onWakeWordDetected()
                     }
@@ -153,6 +158,8 @@ class WakeWordDetector(
                 Log.e(TAG, "Error processing audio frame", e)
             }
         }
+
+        Log.d(TAG, "Detection loop exited, isListening: ${isListening.get()}, coroutineActive: ${coroutineContext.isActive}")
     }
 
     /**

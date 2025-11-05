@@ -167,7 +167,7 @@ class VoiceListeningService : Service() {
                     context = applicationContext,
                     onPartialTranscript = ::handlePartialTranscript,
                     onTranscriptReady = ::handleTranscript,
-                    onError = ::handleSttError
+                    onRecognitionError = ::handleSttError
                 )
                 speechRecognizer?.initialize()
 
@@ -225,56 +225,36 @@ class VoiceListeningService : Service() {
         routeToWorkflow(text, transcript.id)
     }
 
-    /**
-     * Route transcript to workflow using WorkflowRouter.
-     * Execute matched workflow via WorkflowExecutor.
-     * Handles all errors via TTS feedback.
-     */
+// In VoiceListeningService.kt
+
     private fun routeToWorkflow(text: String, transcriptId: Long) {
         serviceScope.launch {
             try {
                 updateNotification("Processing...")
-
                 val match = workflowRouter?.route(text, transcriptId)
-
                 if (match == null) {
-                    // No workflow matched
-                    Log.d(TAG, "No workflow matched")
                     ttsService?.speak("No workflow matched.")
                 } else {
-                    // Execute workflow
-                    Log.d(TAG, "Executing workflow: ${match.definition.name}")
-
                     val result = workflowExecutor?.execute(match)
-
                     when (result) {
-                        is WorkflowResult.Success -> {
-                            Log.d(TAG, "Workflow completed successfully")
-                        }
                         is WorkflowResult.Failure -> {
-                            Log.e(TAG, "Workflow failed: ${result.error}")
                             ttsService?.speak("Workflow failed: ${result.error}")
                         }
-                        null -> {
-                            Log.e(TAG, "WorkflowExecutor is null")
-                            ttsService?.speak("System error.")
-                        }
+                        null -> ttsService?.speak("System error.")
+                        else -> {}
                     }
                 }
-
+                updateNotification("Still listening...")
+                delay(300)
+                speechRecognizer?.start()
             } catch (e: MultipleMatchException) {
-                // Multiple workflows matched
-                Log.w(TAG, "Multiple workflows matched: ${e.matchedWorkflows}")
-                val workflowList = e.matchedWorkflows.joinToString(", ")
-                ttsService?.speak("Multiple workflows matched: $workflowList. Please be more specific.")
-
+                ttsService?.speak("Multiple workflows matched. Please be more specific.")
+                delay(300)
+                speechRecognizer?.start()
             } catch (e: Exception) {
-                Log.e(TAG, "Error routing to workflow", e)
                 ttsService?.speak("Sorry, something went wrong.")
-            } finally {
-                // Always resume wake word detection
-                updateNotification("Listening for wake word...")
-                wakeWordDetector?.start()
+                delay(300)
+                speechRecognizer?.start()
             }
         }
     }
