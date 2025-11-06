@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+
     <application
         android:name=".AmbientAIApp"
         android:allowBackup="true"
@@ -33,18 +34,17 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
-
-        <!-- Boot Receiver -->
-        <receiver
-            android:name=".core.BootReceiver"
-            android:enabled="true"
-            android:exported="true">
+        <!-- Quick Settings Tile -->
+        <service
+            android:name=".core.wake.WakeWordTileService"
+            android:icon="@drawable/ic_mic_tile"
+            android:label="@string/tile_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
-        </receiver>
-
+        </service>
     </application>
 
 </manifest>

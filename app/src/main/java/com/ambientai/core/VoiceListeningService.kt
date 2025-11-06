@@ -3,6 +3,7 @@ package com.ambientai.core
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -27,7 +28,7 @@ import kotlinx.coroutines.*
  * Foreground service that runs the voice pipeline:
  * Wake word → STT → Workflow routing → Execution → TTS
  *
- * All workflow logic is handled by WorkflowRouter and WorkflowExecutor.
+ * Service stays alive continuously. Tile controls detection state (paused/active).
  */
 class VoiceListeningService : Service() {
 
@@ -41,11 +42,23 @@ class VoiceListeningService : Service() {
 
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
-
     companion object {
         private const val TAG = "VoiceListeningService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
+        const val ACTION_PAUSE_DETECTION = "com.ambientai.PAUSE_DETECTION"
+        const val ACTION_RESUME_DETECTION = "com.ambientai.RESUME_DETECTION"
+
+        @Volatile
+        private var isRunning = false
+        @Volatile
+        private var isDetecting = false
+        @Volatile
+        private var isTtsSpeaking = false
+
+
+        fun isServiceRunning(): Boolean = isRunning
+        fun isDetectionActive(): Boolean = isDetecting
     }
 
     interface TranscriptUpdateListener {
@@ -68,6 +81,7 @@ class VoiceListeningService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Service created")
+        isRunning = true
 
         createNotificationChannel()
 
@@ -91,8 +105,24 @@ class VoiceListeningService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "Service started")
-        wakeWordDetector?.start()
+        Log.d(TAG, "Service started with action: ${intent?.action}")
+
+        when (intent?.action) {
+            ACTION_PAUSE_DETECTION -> {
+                pauseDetection()
+                return START_STICKY
+            }
+            ACTION_RESUME_DETECTION -> {
+                resumeDetection()
+                return START_STICKY
+            }
+        }
+
+        // Default: start detection if not already detecting
+        if (!isDetecting) {
+            resumeDetection()
+        }
+
         return START_STICKY
     }
 
@@ -102,10 +132,34 @@ class VoiceListeningService : Service() {
         super.onDestroy()
         Log.d(TAG, "Service destroyed")
 
+        isRunning = false
+        isDetecting = false
         wakeWordDetector?.cleanup()
         speechRecognizer?.cleanup()
         ttsService?.cleanup()
         serviceScope.cancel()
+    }
+
+    /**
+     * Pause wake word detection.
+     * Service stays alive, microphone is released.
+     */
+    fun pauseDetection() {
+        Log.d(TAG, "Pausing detection")
+        wakeWordDetector?.stop()
+        isDetecting = false
+        updateNotification("Paused (tap tile to resume)")
+    }
+
+    /**
+     * Resume wake word detection.
+     * Service is already alive, just restart detector.
+     */
+    fun resumeDetection() {
+        Log.d(TAG, "Resuming detection")
+        wakeWordDetector?.start()
+        isDetecting = true
+        updateNotification("Listening for wake word...")
     }
 
     private fun createNotificationChannel() {
@@ -125,10 +179,25 @@ class VoiceListeningService : Service() {
     }
 
     private fun createNotification(text: String): Notification {
+        // Create intent to toggle detection via notification
+        val toggleIntent = Intent(this, VoiceListeningService::class.java).apply {
+            action = if (isDetecting) ACTION_PAUSE_DETECTION else ACTION_RESUME_DETECTION
+        }
+        val togglePendingIntent = PendingIntent.getService(
+            this,
+            0,
+            toggleIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val actionLabel = if (isDetecting) "Pause" else "Resume"
+        val actionIcon = if (isDetecting) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Ambient AI")
             .setContentText(text)
             .setSmallIcon(R.mipmap.ic_launcher)
+            .addAction(actionIcon, actionLabel, togglePendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .build()
@@ -172,8 +241,9 @@ class VoiceListeningService : Service() {
                 speechRecognizer?.initialize()
                 reloadWorkflows()
                 Log.d(TAG, "All components initialized")
-                wakeWordDetector?.start()
-                updateNotification("Listening for wake word...")
+
+                // Start detection by default
+                resumeDetection()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to initialize components", e)
             }
@@ -191,12 +261,27 @@ class VoiceListeningService : Service() {
     }
 
     private fun handleWakeWord() {
-        Log.d(TAG, "Wake word detected - starting STT")
-        wakeWordDetector?.stop()
-        updateNotification("Listening...")
-        serviceScope.launch {
-            delay(10)
-            speechRecognizer?.start() // intential as I want to speak after TTS, will fail if nothing said within ~2 seconds
+        Log.d(TAG, "Wake word detected")
+
+        if (isTtsSpeaking) {
+            // Interrupt TTS
+            Log.d(TAG, "Interrupting TTS")
+            ttsService?.stop()
+            isTtsSpeaking = false
+            // Wake word already running, just start STT
+            updateNotification("Listening...")
+            serviceScope.launch {
+                delay(100)
+                speechRecognizer?.start()
+            }
+        } else {
+            // Normal wake word flow
+            wakeWordDetector?.stop()
+            updateNotification("Listening...")
+            serviceScope.launch {
+                delay(10)
+                speechRecognizer?.start()
+            }
         }
     }
 
@@ -222,44 +307,63 @@ class VoiceListeningService : Service() {
         routeToWorkflow(text, transcript.id)
     }
 
-// In VoiceListeningService.kt
-
     private fun routeToWorkflow(text: String, transcriptId: Long) {
         serviceScope.launch {
             try {
                 updateNotification("Processing...")
+
+                // Start wake word immediately for interruption support
+                wakeWordDetector?.start()
+
                 val match = workflowRouter?.route(text, transcriptId)
+
                 if (match == null) {
+                    isTtsSpeaking = true
                     ttsService?.speak("No workflow matched.")
+                    isTtsSpeaking = false
                 } else {
                     val result = workflowExecutor?.execute(match)
                     when (result) {
                         is WorkflowResult.Failure -> {
+                            isTtsSpeaking = true
                             ttsService?.speak("Workflow failed: ${result.error}")
+                            isTtsSpeaking = false
                         }
-                        null -> ttsService?.speak("System error.")
+                        null -> {
+                            isTtsSpeaking = true
+                            ttsService?.speak("System error.")
+                            isTtsSpeaking = false
+                        }
                         else -> {}
                     }
                 }
-                updateNotification("Still listening...")
-                delay(300)
-                speechRecognizer?.start()
+
+                updateNotification("Listening for wake word...")
+
             } catch (e: MultipleMatchException) {
+                wakeWordDetector?.start()
+                isTtsSpeaking = true
                 ttsService?.speak("Multiple workflows matched. Please be more specific.")
-                delay(300)
-                speechRecognizer?.start()
+                isTtsSpeaking = false
+                updateNotification("Listening for wake word...")
             } catch (e: Exception) {
+                wakeWordDetector?.start()
+                isTtsSpeaking = true
                 ttsService?.speak("Sorry, something went wrong.")
-                delay(300)
-                speechRecognizer?.start()
+                isTtsSpeaking = false
+                updateNotification("Listening for wake word...")
             }
         }
     }
 
     private fun handleSttError(errorCode: Int) {
         Log.e(TAG, "STT error: $errorCode")
-        updateNotification("Listening for wake word...")
-        wakeWordDetector?.start()
+        if (isDetecting) {
+            updateNotification("Listening for wake word...")
+            wakeWordDetector?.start()
+        } else {
+            updateNotification("Paused (tap tile to resume)")
+        }
     }
 
     private fun handleTtsError(errorCode: Int) {

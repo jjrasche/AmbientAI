@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">Ambient AI</string>
+
+    <!-- Quick Settings Tile -->
+    <string name="tile_label">Wake Word</string>
+    <string name="tile_active">Wake word detection active</string>
+    <string name="tile_inactive">Wake word detection inactive</string>
 </resources>

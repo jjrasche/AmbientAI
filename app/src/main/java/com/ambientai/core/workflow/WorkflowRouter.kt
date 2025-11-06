@@ -97,7 +97,7 @@ class WorkflowRouter() {
                     "systemPrompt":"You are a helpful voice assistant. Provide brief, conversational responses.",
                     "userPrompt":"$transcript",
                     "temperature":0.7,
-                    "maxTokens":150
+                    "maxTokens":50
                 },"output":"response"},
                 {"action":"tts.speak","input":{"text":"${'$'}response.response"}}
             ]

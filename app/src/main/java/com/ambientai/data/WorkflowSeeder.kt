@@ -32,7 +32,7 @@ class WorkflowSeeder() {
       "systemPrompt":"You are a helpful assistant. Answer the user's question based on the search results provided. Be concise and cite sources when relevant.",
       "userPrompt":"Question: ${'$'}transcript\n\nSearch Results:\n${'$'}searchResults.snippets",
       "temperature":0.7,
-      "maxTokens":200
+      "maxTokens":50
     },"output":"answer"},
     {"action":"tts.speak","input":{"text":"${'$'}answer.response"}}
   ]
