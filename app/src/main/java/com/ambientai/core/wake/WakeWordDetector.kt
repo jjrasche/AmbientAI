@@ -1,32 +1,30 @@
 package com.ambientai.core.wake
 
 import ai.picovoice.porcupine.Porcupine
-import ai.picovoice.porcupine.PorcupineException
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.ambientai.BuildConfig
 import kotlinx.coroutines.*
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
-import com.ambientai.BuildConfig
 
-/**
- * Detects wake words using Porcupine.
- * Uses custom "Coral" wake word from assets.
- */
 class WakeWordDetector(
     private val context: Context,
     private val onWakeWordDetected: () -> Unit
 ) {
     private var porcupine: Porcupine? = null
     private var audioRecord: AudioRecord? = null
+    private var audioManager: AudioManager? = null
     private val isListening = AtomicBoolean(false)
     private var detectionJob: Job? = null
 
@@ -35,160 +33,100 @@ class WakeWordDetector(
         private const val WAKE_WORD_FILE = "coral_en_android_v3_0_0.ppn"
     }
 
-    /**
-     * Initialize Porcupine with custom "Coral" wake word.
-     * Call this before start().
-     */
     fun initialize() {
-        try {
-            // Extract wake word file from assets to internal storage
-            val modelPath = extractAssetToFile(WAKE_WORD_FILE)
-
-            porcupine = Porcupine.Builder()
-                .setAccessKey(BuildConfig.PICOVOICE_ACCESS_KEY)
-                .setKeywordPath(modelPath)
-                .build(context)
-
-            Log.d(TAG, "Porcupine initialized with custom wake word: Coral")
-        } catch (e: PorcupineException) {
-            Log.e(TAG, "Failed to initialize Porcupine", e)
-            throw e
-        }
+        audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        Log.d(TAG, "WakeWordDetector initialized")
     }
 
-    /**
-     * Extract wake word file from assets to internal storage.
-     * Porcupine requires a file path, not an asset stream.
-     */
-    private fun extractAssetToFile(assetName: String): String {
-        val file = File(context.filesDir, assetName)
-
-        // Only extract if file doesn't exist or is outdated
-        if (!file.exists() || file.length() == 0L) {
-            context.assets.open(assetName).use { input ->
-                FileOutputStream(file).use { output ->
-                    input.copyTo(output)
-                }
-            }
-            Log.d(TAG, "Extracted $assetName to ${file.absolutePath}")
-        }
-
-        return file.absolutePath
-    }
-
-    /**
-     * Start listening for wake word.
-     * Runs on background coroutine.
-     */
     fun start() {
-        if (isListening.get()) {
-            Log.w(TAG, "Already listening")
-            return
-        }
+        if (isListening.get()) return
+        audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
 
-        val porcupineInstance = porcupine ?: run {
-            Log.e(TAG, "Porcupine not initialized")
-            return
-        }
-
-        // Check for microphone permission
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
-            Log.e(TAG, "RECORD_AUDIO permission not granted")
-            return
-        }
-
-        try {
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                porcupineInstance.sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                porcupineInstance.frameLength * 2
-            )
-
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord failed to initialize")
-                return
-            }
-
-            isListening.set(true)
-            audioRecord?.startRecording()
-
-            // Run detection loop on IO dispatcher
-            detectionJob = CoroutineScope(Dispatchers.IO).launch {
-                detectWakeWord(porcupineInstance)
-            }
-
-            Log.d(TAG, "Started listening for wake word: Coral")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start AudioRecord", e)
-            stop()
-        }
-    }
-
-    private suspend fun detectWakeWord(porcupine: Porcupine) {
-        val buffer = ShortArray(porcupine.frameLength)
-
-        Log.d(TAG, "Detection loop started, buffer size: ${buffer.size}")
-
-        while (isListening.get() && coroutineContext.isActive) {
-            val numRead = audioRecord?.read(buffer, 0, buffer.size) ?: -1
-
-            if (numRead < 0) {
-                Log.e(TAG, "AudioRecord read error: $numRead")
-                break
-            }
-
-            // ADD THIS - log every 100 frames to confirm it's reading
-            if (System.currentTimeMillis() % 10000 < 100) {
-                Log.d(TAG, "Still reading audio, numRead: $numRead")
-            }
-
-            try {
-                val keywordIndex = porcupine.process(buffer)
-
-                if (keywordIndex >= 0) {
-                    Log.d(TAG, "Wake word detected: Coral!")
-                    withContext(Dispatchers.Main) {
-                        onWakeWordDetected()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager?.availableCommunicationDevices
+                ?.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
+                ?.let { device ->
+                    Log.d(TAG, "Setting Bluetooth device: ${device.productName}")
+                    if (audioManager?.setCommunicationDevice(device) == true) {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            delay(1000)
+                            initializePorcupine()
+                        }
+                        return
                     }
                 }
-            } catch (e: PorcupineException) {
-                Log.e(TAG, "Error processing audio frame", e)
-            }
         }
-
-        Log.d(TAG, "Detection loop exited, isListening: ${isListening.get()}, coroutineActive: ${coroutineContext.isActive}")
+        initializePorcupine()
     }
 
-    /**
-     * Stop listening for wake word.
-     */
+    private fun initializePorcupine() {
+        val modelPath = extractAsset(WAKE_WORD_FILE)
+        porcupine = Porcupine.Builder()
+            .setAccessKey(BuildConfig.PICOVOICE_ACCESS_KEY)
+            .setKeywordPath(modelPath)
+            .build(context)
+
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "Missing RECORD_AUDIO permission")
+            return
+        }
+
+        val p = porcupine ?: return
+        audioRecord = listOf(
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION
+        ).firstNotNullOfOrNull { source ->
+            try {
+                AudioRecord(source, p.sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, p.frameLength * 2)
+                    .takeIf { it.state == AudioRecord.STATE_INITIALIZED }
+                    ?.also { Log.d(TAG, "AudioRecord initialized with source: $source") }
+            } catch (e: Exception) {
+                null
+            }
+        } ?: run {
+            Log.e(TAG, "Failed to initialize AudioRecord")
+            return
+        }
+
+        isListening.set(true)
+        audioRecord?.startRecording()
+        detectionJob = CoroutineScope(Dispatchers.IO).launch { detectLoop(p) }
+        Log.d(TAG, "Started listening")
+    }
+
+    private suspend fun detectLoop(p: Porcupine) {
+        val buffer = ShortArray(p.frameLength)
+        while (isListening.get() && coroutineContext.isActive) {
+            if (audioRecord?.read(buffer, 0, buffer.size) ?: -1 < 0) break
+            if (p.process(buffer) >= 0) {
+                withContext(Dispatchers.Main) { onWakeWordDetected() }
+            }
+        }
+    }
+
     fun stop() {
         isListening.set(false)
         detectionJob?.cancel()
-        detectionJob = null
-
         audioRecord?.apply {
-            if (state == AudioRecord.STATE_INITIALIZED) {
-                stop()
-            }
+            if (state == AudioRecord.STATE_INITIALIZED) stop()
             release()
         }
         audioRecord = null
-
-        Log.d(TAG, "Stopped listening")
     }
 
-    /**
-     * Clean up resources.
-     * Call when done with detector.
-     */
     fun cleanup() {
         stop()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager?.clearCommunicationDevice()
+        }
         porcupine?.delete()
         porcupine = null
-        Log.d(TAG, "Cleaned up resources")
+        audioManager = null
     }
+
+    private fun extractAsset(name: String) = File(context.filesDir, name).apply {
+        if (!exists() || length() == 0L) {
+            context.assets.open(name).use { it.copyTo(outputStream()) }
+        }
+    }.absolutePath
 }
