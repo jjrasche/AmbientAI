@@ -195,7 +195,7 @@ class VoiceListeningService : Service() {
         wakeWordDetector?.stop()
         updateNotification("Listening...")
         serviceScope.launch {
-            delay(0)
+            delay(10)
             speechRecognizer?.start()
         }
     }

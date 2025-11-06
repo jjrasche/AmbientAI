@@ -66,39 +66,39 @@ fun DatabaseScreen(
             Button(onClick = onBack) {  Text("Back") }
         }
 
-        TabRow(selectedTabIndex = selectedTab) {
+        ScrollableTabRow(selectedTabIndex = selectedTab) {
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                modifier = Modifier.combinedClickable(
                     onClick = { selectedTab = 0 })
             ) { Text(text = "Transcripts (${transcripts.size})", modifier = Modifier.padding(16.dp)) }
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                modifier = Modifier.combinedClickable(
                     onClick = { selectedTab = 1 })
             ) { Text(text = "LLM (${llmInteractions.size})",  modifier = Modifier.padding(16.dp)) }
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                modifier = Modifier.combinedClickable(
                     onClick = { selectedTab = 2 },
                     onDoubleClick = { workflowSeeder.seed() },
                     onLongClick = { workflowDefinitionRepository.deleteAll() }),
             ) { Text(text = "Workflows (${workflows.size})", modifier = Modifier.padding(16.dp)) }
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                modifier = Modifier.combinedClickable(
                     onClick = { selectedTab = 3 },
                     onLongClick = { taskRepository.deleteAll() }),
             ) { Text(text = "Tasks (${tasks.size})", modifier = Modifier.padding(16.dp)) }
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                modifier = Modifier.combinedClickable(
                     onClick = { selectedTab = 4 }),
 //                    onLongClick = { workflowExecutionRepository.deleteAll(); actionExecutionRepository.deleteAll() }
             ) { Text(text = "Executions (${workflowExecutions.size})", modifier = Modifier.padding(16.dp)) }
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier.weight(1f).height(48.dp).combinedClickable(
+                modifier = Modifier.combinedClickable(
                     onClick = { selectedTab = 5 },
                     onLongClick = { logEntryRepository.deleteAll() }),
             ) { Text(text = "Log Entries (${logEntries.size})", modifier = Modifier.padding(16.dp)) }
@@ -404,7 +404,7 @@ fun ActionExecutionRow(action: ActionExecution) {
             if (action.inputJson.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Input: ${action.inputJson.take(80)}${if (action.inputJson.length > 80) "..." else ""}",
+                    text = "Input: ${action.inputJson.take(500)}${if (action.inputJson.length > 500) "..." else ""}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -413,7 +413,7 @@ fun ActionExecutionRow(action: ActionExecution) {
             if (action.success && action.outputJson.isNotBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Output: ${action.outputJson.take(80)}${if (action.outputJson.length > 80) "..." else ""}",
+                    text = "Output: ${action.outputJson.take(500)}${if (action.outputJson.length > 500) "..." else ""}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
