@@ -196,7 +196,7 @@ class VoiceListeningService : Service() {
         updateNotification("Listening...")
         serviceScope.launch {
             delay(10)
-            speechRecognizer?.start()
+            speechRecognizer?.start() // intential as I want to speak after TTS, will fail if nothing said within ~2 seconds
         }
     }
 
