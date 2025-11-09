@@ -1,11 +1,15 @@
 package com.ambientai.workflow
 
 import com.ambientai.data.entities.WorkflowDefinition
-import com.ambientai.data.repositories.WorkflowDefinitionRepository
+import com.ambientai.data.repositories.IWorkflowDefinitionRepository
 import org.json.JSONObject
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class WorkflowRouter() {
-    private val workflowRepo = WorkflowDefinitionRepository()
+@Singleton
+class WorkflowRouter @Inject constructor(
+    private val workflowRepo: IWorkflowDefinitionRepository
+) {
     private var workflows: List<WorkflowDefinition> = emptyList()
 
     fun loadWorkflows() { workflows = workflowRepo.getEnabled() }

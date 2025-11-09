@@ -1,6 +1,5 @@
 package com.ambientai.workflow
 
-import android.content.Context
 import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.log.LogManager
 import com.ambientai.core.search.SearchService
@@ -8,21 +7,25 @@ import com.ambientai.core.task.TaskManager
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.entities.ActionExecution
-import com.ambientai.data.repositories.WorkflowDefinitionRepository
-import com.ambientai.data.repositories.WorkflowExecutionRepository
+import com.ambientai.data.repositories.IWorkflowDefinitionRepository
+import com.ambientai.data.repositories.IWorkflowExecutionRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.json.JSONArray
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class WorkflowExecutor(private val context: Context) {
-    private val executionRepo = WorkflowExecutionRepository()
-    private val workflowRepo = WorkflowDefinitionRepository()
-    private var tts = TextToSpeechService(context)
-    private val tasks = TaskManager()
-    private val llm = GroqLlmService()
-    private val search = SearchService()
-    private val logs = LogManager()
+@Singleton
+class WorkflowExecutor @Inject constructor(
+    private val executionRepo: IWorkflowExecutionRepository,
+    private val workflowRepo: IWorkflowDefinitionRepository,
+    private val tts: TextToSpeechService,
+    private val tasks: TaskManager,
+    private val llm: GroqLlmService,
+    private val search: SearchService,
+    private val logs: LogManager
+) {
     private var completionTriggers = mapOf<String, List<Long>>()
 
     fun loadCompletionTriggers() { completionTriggers = workflowRepo.getEnabled().flatMap { workflow -> runCatching { JSONObject(workflow.definition).optJSONObject("triggers")?.optJSONArray("onWorkflowComplete")?.let { onComplete -> (0 until onComplete.length()).map { onComplete.getString(it) to workflow.id } } ?: emptyList() }.getOrElse { emptyList() } }.groupBy({ it.first }, { it.second }) }

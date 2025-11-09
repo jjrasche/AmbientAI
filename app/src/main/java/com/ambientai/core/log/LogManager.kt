@@ -1,13 +1,17 @@
 package com.ambientai.core.log
 
 import com.ambientai.data.entities.LogEntry
-import com.ambientai.data.repositories.LogEntryRepository
-import com.ambientai.data.repositories.TranscriptRepository
+import com.ambientai.data.repositories.ILogEntryRepository
+import com.ambientai.data.repositories.ITranscriptRepository
 import org.json.JSONObject
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class LogManager {
-    private val repo = LogEntryRepository()
-    private val transcriptRepo = TranscriptRepository()
+@Singleton
+class LogManager @Inject constructor(
+    private val repo: ILogEntryRepository,
+    private val transcriptRepo: ITranscriptRepository
+) {
 
     fun execute(actionName: String, input: JSONObject): JSONObject = when (actionName) {
         "log.write" -> write(input)

@@ -16,20 +16,24 @@ import com.ambientai.core.stt.SpeechRecognizer
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.core.wake.WakeWordDetector
 import com.ambientai.data.entities.Transcript
-import com.ambientai.data.repositories.TranscriptRepository
+import com.ambientai.data.repositories.ITranscriptRepository
 import com.ambientai.workflow.MultipleMatchException
 import com.ambientai.workflow.WorkflowExecutor
 import com.ambientai.workflow.WorkflowResult
 import com.ambientai.workflow.WorkflowRouter
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class VoiceListeningService : Service() {
     private var wakeWordDetector: WakeWordDetector? = null
     private var speechRecognizer: SpeechRecognizer? = null
-    private var transcriptRepository: TranscriptRepository? = null
     private var ttsService: TextToSpeechService? = null
-    private var workflowRouter: WorkflowRouter? = null
-    private var workflowExecutor: WorkflowExecutor? = null
+
+    @Inject lateinit var transcriptRepository: ITranscriptRepository
+    @Inject lateinit var workflowRouter: WorkflowRouter
+    @Inject lateinit var workflowExecutor: WorkflowExecutor
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
@@ -62,9 +66,6 @@ class VoiceListeningService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, createNotification("Initializing..."))
         }
-        transcriptRepository = TranscriptRepository()
-        workflowRouter = WorkflowRouter()
-        workflowExecutor = WorkflowExecutor(applicationContext)
         initializeComponents()
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -124,8 +125,8 @@ class VoiceListeningService : Service() {
         } catch (e: Exception) {}
     }
     fun reloadWorkflows() {
-        workflowRouter?.loadWorkflows()
-        workflowExecutor?.loadCompletionTriggers()
+        workflowRouter.loadWorkflows()
+        workflowExecutor.loadCompletionTriggers()
     }
     private fun handleWakeWord() {
         val wasSpeaking = isTtsSpeaking
@@ -141,7 +142,7 @@ class VoiceListeningService : Service() {
     private fun handlePartialTranscript(text: String) = listeners.forEach { it.onPartialTranscript(text) }
     private fun handleTranscript(text: String) {
         Transcript(text = text, audioFilePath = "", timestamp = System.currentTimeMillis(), excludeFromContext = false).also {
-            transcriptRepository?.save(it)
+            transcriptRepository.save(it)
             listeners.forEach { listener -> listener.onTranscriptSaved(it) }
             routeToWorkflow(text, it.id)
         }
@@ -151,12 +152,12 @@ class VoiceListeningService : Service() {
         try {
             updateNotification("Processing...")
             wakeWordDetector?.start()
-            val match = workflowRouter?.route(text, transcriptId)
+            val match = workflowRouter.route(text, transcriptId)
             if (match == null) {
                 speak("No workflow matched.")
             } else {
-                when (workflowExecutor?.execute(match)) {
-                    is WorkflowResult.Failure -> speak("Workflow failed: ${(workflowExecutor?.execute(match) as? WorkflowResult.Failure)?.error}")
+                when (workflowExecutor.execute(match)) {
+                    is WorkflowResult.Failure -> speak("Workflow failed: ${(workflowExecutor.execute(match) as? WorkflowResult.Failure)?.error}")
                     null -> speak("System error.")
                     else -> {}
                 }

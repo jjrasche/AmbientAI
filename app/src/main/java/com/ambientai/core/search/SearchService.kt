@@ -7,8 +7,11 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class SearchService {
+@Singleton
+class SearchService @Inject constructor() {
     companion object {
         private const val API_URL = "https://api.search.brave.com/res/v1/web/search"
         private const val TIMEOUT_MS = 10000
