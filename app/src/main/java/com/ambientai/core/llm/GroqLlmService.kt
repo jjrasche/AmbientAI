@@ -1,9 +1,6 @@
 package com.ambientai.core.llm
 
 import com.ambientai.BuildConfig
-import com.ambientai.data.LlmRequest
-import com.ambientai.data.LlmResponse
-import com.ambientai.data.Message
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -16,6 +13,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class GroqLlmService {
+    private data class LlmRequest(val model: String, val messages: List<Message>, val temperature: Float, val max_tokens: Int, val stream: Boolean)
+    private data class Message(val role: String, val content: String)
+    private data class LlmResponse(val id: String, val choices: List<Choice>, val usage: Usage?)
+    private data class Choice(val message: Message, val finish_reason: String?)
+    private data class Usage(val prompt_tokens: Int, val completion_tokens: Int, val total_tokens: Int)
     companion object {
         private const val API_URL = "https://api.groq.com/openai/v1/chat/completions"
         private const val MODEL = "llama-3.1-8b-instant"
@@ -84,13 +86,13 @@ class GroqLlmService {
             id = json.getString("id"),
             choices = List(json.getJSONArray("choices").length()) { i ->
                 json.getJSONArray("choices").getJSONObject(i).let { choice ->
-                    com.ambientai.data.Choice(
+                    Choice(
                         message = choice.getJSONObject("message").let { Message(it.getString("role"), it.getString("content")) },
                         finish_reason = choice.optString("finish_reason", null)
                     )
                 }
             },
-            usage = json.optJSONObject("usage")?.let { com.ambientai.data.Usage(it.getInt("prompt_tokens"), it.getInt("completion_tokens"), it.getInt("total_tokens")) }
+            usage = json.optJSONObject("usage")?.let { Usage(it.getInt("prompt_tokens"), it.getInt("completion_tokens"), it.getInt("total_tokens")) }
         )
     }
 }
