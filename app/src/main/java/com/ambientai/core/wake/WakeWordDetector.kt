@@ -12,7 +12,6 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import java.io.File
@@ -34,7 +33,6 @@ class WakeWordDetector(
     private var bluetoothDevice: AudioDeviceInfo? = null
 
     companion object {
-        private const val TAG = "WakeWordDetector"
         private const val WAKE_WORD_FILE = "coral_en_android_v3_0_0.ppn"
     }
 
@@ -164,12 +162,7 @@ class WakeWordDetector(
 
         while (isListening.get() && coroutineContext.isActive) {
             val numRead = audioRecord?.read(buffer, 0, buffer.size) ?: -1
-
-            if (numRead < 0) {
-                Log.e(TAG, "AudioRecord read error: $numRead")
-                break
-            }
-
+            if (numRead < 0) break
             try {
                 val keywordIndex = porcupine.process(buffer)
                 if (keywordIndex >= 0) {
@@ -188,16 +181,8 @@ class WakeWordDetector(
         isListening.set(false)
         detectionJob?.cancel()
         detectionJob = null
-
-        audioRecord?.apply {
-            if (state == AudioRecord.STATE_INITIALIZED) {
-                stop()
-            }
-            release()
-        }
+        audioRecord?.apply { if (state == AudioRecord.STATE_INITIALIZED) stop(); release() }
         audioRecord = null
-
-        Log.d(TAG, "Stopped listening")
     }
 
     fun cleanup() {

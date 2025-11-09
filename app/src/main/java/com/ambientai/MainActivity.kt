@@ -8,7 +8,6 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,118 +29,65 @@ import com.ambientai.ui.screens.TimelineScreen
 import com.ambientai.ui.theme.AmbientAITheme
 
 class MainActivity : ComponentActivity() {
-
-    // Service binding
     private var voiceService: VoiceListeningService? = null
     private var isBound = false
-
-    // Repositories
     private lateinit var transcriptRepository: TranscriptRepository
     private lateinit var actionExecutionRepository: ActionExecutionRepository
     private lateinit var workflowDefinitionRepository: WorkflowDefinitionRepository
     private lateinit var taskRepository: TaskRepository
     private lateinit var workflowExecutionRepository: WorkflowExecutionRepository
     private lateinit var logEntryRepository: LogEntryRepository
-
-    // Navigation state
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
-
-    // Current transcript state (from service)
     private var currentTranscript by mutableStateOf("")
-
     sealed class Screen {
         object Timeline : Screen()
         object Database : Screen()
     }
-
-    companion object {
-        private const val TAG = "MainActivity"
-    }
-
-    // Service connection
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as VoiceListeningService.LocalBinder
-            voiceService = binder.getService()
-            isBound = true
-            voiceService?.registerListener(transcriptListener)
-            Log.d(TAG, "Service bound")
+            voiceService = (service as VoiceListeningService.LocalBinder).getService().also {
+                isBound = true
+                it.registerListener(transcriptListener)
+            }
         }
-
         override fun onServiceDisconnected(name: ComponentName?) {
             voiceService = null
             isBound = false
-            Log.d(TAG, "Service disconnected")
         }
     }
-
-    // Transcript update listener
     private val transcriptListener = object : VoiceListeningService.TranscriptUpdateListener {
-        override fun onPartialTranscript(text: String) {
-            currentTranscript = text
-        }
-
-        override fun onTranscriptSaved(transcript: Transcript) {
-            currentTranscript = ""
-        }
+        override fun onPartialTranscript(text: String) { currentTranscript = text }
+        override fun onTranscriptSaved(transcript: Transcript) { currentTranscript = "" }
     }
-
-    // Permission launcher
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions[Manifest.permission.RECORD_AUDIO] == true &&
-            permissions[Manifest.permission.POST_NOTIFICATIONS] == true) {
-            startVoiceService()
-        }
+    private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+        if (permissions[Manifest.permission.RECORD_AUDIO] == true && permissions[Manifest.permission.POST_NOTIFICATIONS] == true) startVoiceService()
     }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Initialize repositories
         transcriptRepository = TranscriptRepository()
         actionExecutionRepository = ActionExecutionRepository()
         workflowDefinitionRepository = WorkflowDefinitionRepository()
         taskRepository = TaskRepository()
         workflowExecutionRepository = WorkflowExecutionRepository()
         logEntryRepository = LogEntryRepository()
-
         checkPermissionsAndStart()
-
         setContent {
             AmbientAITheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     when (currentScreen) {
-                        Screen.Timeline -> TimelineScreen(
-                            currentTranscript = currentTranscript,
-                            transcriptRepository = transcriptRepository,
-                            actionExecutionRepository = actionExecutionRepository,
-                            onNavigateToDb = { currentScreen = Screen.Database },
-                            onToggleExcludeFromContext = ::toggleExcludeFromContext
-                        )
-                        Screen.Database -> DatabaseScreen(
-                            transcriptRepository = transcriptRepository,
-                            actionExecutionRepository = actionExecutionRepository,
-                            workflowDefinitionRepository = workflowDefinitionRepository,
-                            taskRepository = taskRepository,
-                            workflowExecutionRepository = workflowExecutionRepository,
-                            logEntryRepository = logEntryRepository,
-                            onBack = { currentScreen = Screen.Timeline }
-                        )
+                        Screen.Timeline -> TimelineScreen(currentTranscript, transcriptRepository, actionExecutionRepository,
+                            onNavigateToDb = { currentScreen = Screen.Database }, onToggleExcludeFromContext = ::toggleExcludeFromContext)
+                        Screen.Database -> DatabaseScreen(transcriptRepository, actionExecutionRepository, workflowDefinitionRepository,
+                            taskRepository, workflowExecutionRepository, logEntryRepository, onBack = { currentScreen = Screen.Timeline })
                     }
                 }
             }
         }
     }
-
     override fun onStart() {
         super.onStart()
-        Intent(this, VoiceListeningService::class.java).also { intent ->
-            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-        }
+        bindService(Intent(this, VoiceListeningService::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
     }
-
     override fun onStop() {
         super.onStop()
         if (isBound) {
@@ -150,31 +96,14 @@ class MainActivity : ComponentActivity() {
             isBound = false
         }
     }
-
     private fun checkPermissionsAndStart() {
-        val permissions = arrayOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.POST_NOTIFICATIONS
-        )
-
-        val needsRequest = permissions.any {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (needsRequest) {
+        val permissions = arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
+        if (permissions.any { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
             requestPermissionLauncher.launch(permissions)
         } else {
             startVoiceService()
         }
     }
-
-    private fun startVoiceService() {
-        val intent = Intent(this, VoiceListeningService::class.java)
-        ContextCompat.startForegroundService(this, intent)
-    }
-
-    private fun toggleExcludeFromContext(transcript: Transcript) {
-        transcriptRepository.toggleExcludeFromContext(transcript.id)
-        Log.d(TAG, "Toggled excludeFromContext for transcript ${transcript.id}")
-    }
+    private fun startVoiceService() = ContextCompat.startForegroundService(this, Intent(this, VoiceListeningService::class.java))
+    private fun toggleExcludeFromContext(transcript: Transcript) = transcriptRepository.toggleExcludeFromContext(transcript.id)
 }
