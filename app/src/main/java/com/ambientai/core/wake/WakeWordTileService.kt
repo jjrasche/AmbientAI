@@ -11,147 +11,88 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
 
-/**
- * Quick Settings tile to toggle wake word detection on/off.
- * Service stays alive - tile only pauses/resumes detection.
- */
 class WakeWordTileService : TileService() {
-
     private var boundService: VoiceListeningService? = null
     private var isBound = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as VoiceListeningService.LocalBinder
-            boundService = binder.getService()
+            boundService = (service as VoiceListeningService.LocalBinder).getService()
             isBound = true
-            Log.d(TAG, "Service bound")
             updateTile()
         }
-
         override fun onServiceDisconnected(name: ComponentName?) {
             boundService = null
             isBound = false
-            Log.d(TAG, "Service disconnected")
         }
-    }
-
-    companion object {
-        private const val TAG = "WakeWordTile"
     }
 
     override fun onStartListening() {
         super.onStartListening()
-        Log.d(TAG, "Tile started listening")
-
-        // Try to bind to service if it's running
-        if (VoiceListeningService.isServiceRunning()) {
-            tryBindService()
-        }
-
+        if (VoiceListeningService.isServiceRunning()) tryBindService()
         updateTile()
     }
-
     override fun onStopListening() {
         super.onStopListening()
-        Log.d(TAG, "Tile stopped listening")
         tryUnbindService()
     }
-
     override fun onClick() {
         super.onClick()
-        Log.d(TAG, "Tile clicked")
-
-        val isRunning = VoiceListeningService.isServiceRunning()
-        val isDetecting = VoiceListeningService.isDetectionActive()
-
-        if (!isRunning) {
-            // Service not running - start it (this will work from tile)
+        if (!VoiceListeningService.isServiceRunning()) {
             startService()
             return
         }
-
-        // Service is running - toggle detection state
-        if (isDetecting) {
-            pauseDetection()
-        } else {
-            resumeDetection()
-        }
-
-        // Update tile immediately
+        if (VoiceListeningService.isDetectionActive()) pauseDetection() else resumeDetection()
         updateTile()
     }
 
     private fun startService() {
         try {
-            val intent = Intent(this, VoiceListeningService::class.java)
-            ContextCompat.startForegroundService(this, intent)
-            Log.d(TAG, "Started VoiceListeningService")
-
-            // Bind to newly started service
+            ContextCompat.startForegroundService(this, Intent(this, VoiceListeningService::class.java))
             tryBindService()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start service", e)
+            Log.e("WakeWordTile", "Failed to start service", e)
         }
     }
-
     private fun pauseDetection() {
         try {
             if (isBound && boundService != null) {
                 boundService?.pauseDetection()
-                Log.d(TAG, "Paused detection via bound service")
             } else {
-                // Fallback: send intent
-                val intent = Intent(this, VoiceListeningService::class.java).apply {
-                    action = VoiceListeningService.ACTION_PAUSE_DETECTION
-                }
-                startService(intent)
-                Log.d(TAG, "Paused detection via intent")
+                startService(Intent(this, VoiceListeningService::class.java).apply { action = VoiceListeningService.ACTION_PAUSE_DETECTION })
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to pause detection", e)
+            Log.e("WakeWordTile", "Failed to pause detection", e)
         }
     }
-
     private fun resumeDetection() {
         try {
             if (isBound && boundService != null) {
                 boundService?.resumeDetection()
-                Log.d(TAG, "Resumed detection via bound service")
             } else {
-                // Fallback: send intent
-                val intent = Intent(this, VoiceListeningService::class.java).apply {
-                    action = VoiceListeningService.ACTION_RESUME_DETECTION
-                }
-                startService(intent)
-                Log.d(TAG, "Resumed detection via intent")
+                startService(Intent(this, VoiceListeningService::class.java).apply { action = VoiceListeningService.ACTION_RESUME_DETECTION })
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to resume detection", e)
+            Log.e("WakeWordTile", "Failed to resume detection", e)
         }
     }
-
     private fun tryBindService() {
         if (!isBound) {
             try {
-                val intent = Intent(this, VoiceListeningService::class.java)
-                bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-                Log.d(TAG, "Binding to service")
+                bindService(Intent(this, VoiceListeningService::class.java), serviceConnection, Context.BIND_AUTO_CREATE)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to bind service", e)
+                Log.e("WakeWordTile", "Failed to bind service", e)
             }
         }
     }
-
     private fun tryUnbindService() {
         if (isBound) {
             try {
                 unbindService(serviceConnection)
                 isBound = false
                 boundService = null
-                Log.d(TAG, "Unbound from service")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to unbind service", e)
+                Log.e("WakeWordTile", "Failed to unbind service", e)
             }
         }
     }
@@ -160,26 +101,16 @@ class WakeWordTileService : TileService() {
         qsTile?.apply {
             val isRunning = VoiceListeningService.isServiceRunning()
             val isDetecting = VoiceListeningService.isDetectionActive()
-
-            state = if (isRunning && isDetecting) {
-                Tile.STATE_ACTIVE
-            } else {
-                Tile.STATE_INACTIVE
-            }
-
+            state = if (isRunning && isDetecting) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
             label = "Wake Word"
-
             contentDescription = when {
                 !isRunning -> "Wake word service inactive"
                 isDetecting -> "Wake word detection active - tap to pause"
                 else -> "Wake word detection paused - tap to resume"
             }
-
             updateTile()
-            Log.d(TAG, "Tile updated: running=$isRunning, detecting=$isDetecting, state=${if (state == Tile.STATE_ACTIVE) "ACTIVE" else "INACTIVE"}")
         }
     }
-
     override fun onDestroy() {
         tryUnbindService()
         super.onDestroy()
