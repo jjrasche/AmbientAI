@@ -98,10 +98,7 @@ class VoiceListeningService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java)?.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Voice Listening", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Ambient AI voice detection"
-                    setShowBadge(false)
-                }
+                NotificationChannel(CHANNEL_ID, "Voice Listening", NotificationManager.IMPORTANCE_LOW).apply { description = "Ambient AI voice detection"; setShowBadge(false) }
             )
         }
     }
@@ -131,16 +128,15 @@ class VoiceListeningService : Service() {
         workflowExecutor?.loadCompletionTriggers()
     }
     private fun handleWakeWord() {
-        if (isTtsSpeaking) {
+        val wasSpeaking = isTtsSpeaking
+        if (wasSpeaking) {
             ttsService?.stop()
             isTtsSpeaking = false
-            updateNotification("Listening...")
-            serviceScope.launch { delay(100); speechRecognizer?.start() }
         } else {
             wakeWordDetector?.stop()
-            updateNotification("Listening...")
-            serviceScope.launch { delay(10); speechRecognizer?.start() }
         }
+        updateNotification("Listening...")
+        serviceScope.launch { delay(if (wasSpeaking) 100 else 10); speechRecognizer?.start() }
     }
     private fun handlePartialTranscript(text: String) = listeners.forEach { it.onPartialTranscript(text) }
     private fun handleTranscript(text: String) {
@@ -150,25 +146,26 @@ class VoiceListeningService : Service() {
             routeToWorkflow(text, it.id)
         }
     }
+    private suspend fun speak(text: String) { isTtsSpeaking = true; ttsService?.speak(text); isTtsSpeaking = false }
     private fun routeToWorkflow(text: String, transcriptId: Long) = serviceScope.launch {
         try {
             updateNotification("Processing...")
             wakeWordDetector?.start()
             val match = workflowRouter?.route(text, transcriptId)
             if (match == null) {
-                isTtsSpeaking = true; ttsService?.speak("No workflow matched."); isTtsSpeaking = false
+                speak("No workflow matched.")
             } else {
                 when (workflowExecutor?.execute(match)) {
-                    is WorkflowResult.Failure -> { isTtsSpeaking = true; ttsService?.speak("Workflow failed: ${(workflowExecutor?.execute(match) as? WorkflowResult.Failure)?.error}"); isTtsSpeaking = false }
-                    null -> { isTtsSpeaking = true; ttsService?.speak("System error."); isTtsSpeaking = false }
+                    is WorkflowResult.Failure -> speak("Workflow failed: ${(workflowExecutor?.execute(match) as? WorkflowResult.Failure)?.error}")
+                    null -> speak("System error.")
                     else -> {}
                 }
             }
             updateNotification("Listening for wake word...")
         } catch (e: MultipleMatchException) {
-            wakeWordDetector?.start(); isTtsSpeaking = true; ttsService?.speak("Multiple workflows matched. Please be more specific."); isTtsSpeaking = false; updateNotification("Listening for wake word...")
+            wakeWordDetector?.start(); speak("Multiple workflows matched. Please be more specific."); updateNotification("Listening for wake word...")
         } catch (e: Exception) {
-            wakeWordDetector?.start(); isTtsSpeaking = true; ttsService?.speak("Sorry, something went wrong."); isTtsSpeaking = false; updateNotification("Listening for wake word...")
+            wakeWordDetector?.start(); speak("Sorry, something went wrong."); updateNotification("Listening for wake word...")
         }
     }
     private fun handleSttError(errorCode: Int) = updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)").also { if (isDetecting) wakeWordDetector?.start() }

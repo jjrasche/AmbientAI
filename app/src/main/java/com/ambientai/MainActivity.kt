@@ -45,15 +45,9 @@ class MainActivity : ComponentActivity() {
     }
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            voiceService = (service as VoiceListeningService.LocalBinder).getService().also {
-                isBound = true
-                it.registerListener(transcriptListener)
-            }
+            voiceService = (service as VoiceListeningService.LocalBinder).getService().also { isBound = true; it.registerListener(transcriptListener) }
         }
-        override fun onServiceDisconnected(name: ComponentName?) {
-            voiceService = null
-            isBound = false
-        }
+        override fun onServiceDisconnected(name: ComponentName?) { voiceService = null; isBound = false }
     }
     private val transcriptListener = object : VoiceListeningService.TranscriptUpdateListener {
         override fun onPartialTranscript(text: String) { currentTranscript = text }
