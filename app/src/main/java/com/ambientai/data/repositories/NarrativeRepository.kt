@@ -15,7 +15,6 @@ class NarrativeRepository {
     fun getById(id: Long) = box.get(id)
     fun count() = box.count()
     fun deleteAll() = box.removeAll()
-
     fun getLatest() = box.query().order(Narrative_.timestamp, OrderFlags.DESCENDING).build().findFirst()
     fun getLatestByType(narrativeType: NarrativeType) = box.query(Narrative_.narrativeType.equal(narrativeType.ordinal.toLong())).order(Narrative_.timestamp, OrderFlags.DESCENDING).build().findFirst()
     fun getRecent(limit: Int) = box.query().order(Narrative_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())

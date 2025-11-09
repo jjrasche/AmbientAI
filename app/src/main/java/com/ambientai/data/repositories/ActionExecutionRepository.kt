@@ -18,28 +18,20 @@ class ActionExecutionRepository {
     fun getById(id: Long) = box.get(id)
     fun count() = box.count()
     fun countByActionName(actionName: String) = box.query(ActionExecution_.actionName.equal(actionName)).build().count()
-
     fun getByWorkflowExecution(executionId: Long) =
         box.query(ActionExecution_.workflowExecutionId.equal(executionId)).order(ActionExecution_.stepIndex).build().find()
-
     fun getByActionName(actionName: String) =
         box.query(ActionExecution_.actionName.equal(actionName)).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-
     fun getGraded() =
         box.query().notNull(ActionExecution_.grade).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-
     fun getUngraded() =
         box.query().isNull(ActionExecution_.grade).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-
     fun getSlowActions(minLatencyMs: Long) =
         box.query(ActionExecution_.latencyMs.greater(minLatencyMs)).order(ActionExecution_.latencyMs, OrderFlags.DESCENDING).build().find()
-
     fun getFailed() =
         box.query(ActionExecution_.success.equal(false)).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-
     fun updateGrade(id: Long, grade: Int) =
         box.get(id)?.let { it.grade = grade; box.put(it); true } ?: false
-
     data class LlmInteractionView(
         val id: Long,
         val systemPrompt: String,
@@ -49,7 +41,6 @@ class ActionExecutionRepository {
         val latencyMs: Long,
         val grade: Int?
     )
-
     fun getLlmInteractions(): Flow<List<LlmInteractionView>> = callbackFlow {
         val subscription = box.query(ActionExecution_.actionName.equal("llm.prompt"))
             .order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build()
