@@ -11,48 +11,13 @@ import io.objectbox.query.OrderFlags
 class NarrativeRepository {
     private val box: Box<Narrative> = AmbientAIApp.boxStore.boxFor()
 
-    fun save(narrative: Narrative): Narrative {
-        box.put(narrative)
-        return narrative
-    }
+    fun save(narrative: Narrative) = narrative.also { box.put(it) }
+    fun getById(id: Long) = box.get(id)
+    fun count() = box.count()
+    fun deleteAll() = box.removeAll()
 
-    fun getLatest(): Narrative? {
-        return box.query()
-            .order(Narrative_.timestamp, OrderFlags.DESCENDING)
-            .build()
-            .findFirst()
-    }
-
-    fun getLatestByType(narrativeType: NarrativeType): Narrative? {
-        return box.query(Narrative_.narrativeType.equal(narrativeType.ordinal.toLong()))
-            .order(Narrative_.timestamp, OrderFlags.DESCENDING)
-            .build()
-            .findFirst()
-    }
-
-    fun getById(id: Long): Narrative? {
-        return box.get(id)
-    }
-
-    fun getRecent(limit: Int): List<Narrative> {
-        return box.query()
-            .order(Narrative_.timestamp, OrderFlags.DESCENDING)
-            .build()
-            .find(0, limit.toLong())
-    }
-
-    fun getRecentByType(narrativeType: NarrativeType, limit: Int): List<Narrative> {
-        return box.query(Narrative_.narrativeType.equal(narrativeType.ordinal.toLong()))
-            .order(Narrative_.timestamp, OrderFlags.DESCENDING)
-            .build()
-            .find(0, limit.toLong())
-    }
-
-    fun count(): Long {
-        return box.count()
-    }
-
-    fun deleteAll() {
-        box.removeAll()
-    }
+    fun getLatest() = box.query().order(Narrative_.timestamp, OrderFlags.DESCENDING).build().findFirst()
+    fun getLatestByType(narrativeType: NarrativeType) = box.query(Narrative_.narrativeType.equal(narrativeType.ordinal.toLong())).order(Narrative_.timestamp, OrderFlags.DESCENDING).build().findFirst()
+    fun getRecent(limit: Int) = box.query().order(Narrative_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())
+    fun getRecentByType(narrativeType: NarrativeType, limit: Int) = box.query(Narrative_.narrativeType.equal(narrativeType.ordinal.toLong())).order(Narrative_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())
 }
