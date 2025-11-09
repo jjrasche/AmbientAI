@@ -1,12 +1,16 @@
 package com.ambientai.core.task
 
 import com.ambientai.data.entities.TaskStatus
-import com.ambientai.data.repositories.TaskRepository
+import com.ambientai.data.repositories.ITaskRepository
 import com.ambientai.util.toHumanDuration
 import org.json.JSONObject
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class TaskManager {
-    private val repo = TaskRepository()
+@Singleton
+class TaskManager @Inject constructor(
+    private val repo: ITaskRepository
+) {
 
     fun execute(actionName: String, input: JSONObject) = when (actionName) { "task.start" -> start(input); "task.pause" -> pause(); "task.complete" -> complete(); "task.getActive" -> getActive(); "task.getNonCompleted" -> getNonCompleted(); else -> throw Exception("Unknown action: $actionName") }
     private fun start(input: JSONObject) = input.optString("name", null)?.takeIf { it.isNotBlank() }?.let { name -> runCatching { pause() }; JSONObject(taskToMap(repo.startTask(name))) } ?: throw Exception("${if (input.optString("name", null) == null) "Missing required field: name" else "Task name cannot be empty"}")

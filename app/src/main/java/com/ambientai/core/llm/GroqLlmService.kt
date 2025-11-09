@@ -11,8 +11,11 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class GroqLlmService {
+@Singleton
+class GroqLlmService @Inject constructor() {
     private data class LlmRequest(val model: String, val messages: List<Message>, val temperature: Float, val max_tokens: Int, val stream: Boolean)
     private data class Message(val role: String, val content: String)
     private data class LlmResponse(val id: String, val choices: List<Choice>, val usage: Usage?)
