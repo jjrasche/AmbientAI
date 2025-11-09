@@ -1,6 +1,5 @@
 package com.ambientai.core.llm
 
-import android.util.Log
 import com.ambientai.BuildConfig
 import com.ambientai.data.LlmRequest
 import com.ambientai.data.LlmResponse
@@ -16,14 +15,8 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * Service for making inference calls to Groq API.
- * Validates inputs and returns JSONObject for workflow compatibility.
- */
 class GroqLlmService {
-
     companion object {
-        private const val TAG = "GroqLlmService"
         private const val API_URL = "https://api.groq.com/openai/v1/chat/completions"
         private const val MODEL = "llama-3.1-8b-instant"
         private const val TIMEOUT_MS = 10000
@@ -31,137 +24,38 @@ class GroqLlmService {
         private const val MIN_TEMPERATURE = 0.0f
         private const val MAX_TEMPERATURE = 2.0f
     }
-
-    /**
-     * Execute an LLM action.
-     * Input/output is JSONObject for workflow compatibility.
-     */
-    fun execute(actionName: String, input: JSONObject): JSONObject {
-        return when (actionName) {
-            "llm.prompt" -> prompt(input)
-            else -> errorResult("Unknown action: $actionName")
-        }
+    fun execute(actionName: String, input: JSONObject) = when (actionName) {
+        "llm.prompt" -> prompt(input)
+        else -> errorResult("Unknown action: $actionName")
     }
-
-    private fun successResult(data: Map<String, Any?> = emptyMap()): JSONObject {
-        return JSONObject().apply {
-            put("success", true)
-            data.forEach { (k, v) -> put(k, v) }
-        }
-    }
-
-    private fun errorResult(message: String): JSONObject {
-        return JSONObject().apply {
-            put("success", false)
-            put("error", message)
-        }
-    }
-
-    /**
-     * Generate LLM response.
-     * Input: { "systemPrompt": "...", "userPrompt": "...", "temperature": 0.7, "maxTokens": 256 }
-     */
+    private fun successResult(data: Map<String, Any?> = emptyMap()) = JSONObject().apply { put("success", true); data.forEach { (k, v) -> put(k, v) } }
+    private fun errorResult(message: String) = JSONObject().apply { put("success", false); put("error", message) }
     private fun prompt(input: JSONObject): JSONObject {
-        // Validate required fields
-        val systemPrompt = input.optString("systemPrompt", null)
-            ?: return errorResult("Missing required field: systemPrompt")
-
-        val userPrompt = input.optString("userPrompt", null)
-            ?: return errorResult("Missing required field: userPrompt")
-
-        if (systemPrompt.isBlank()) {
-            return errorResult("systemPrompt cannot be empty")
-        }
-
-        if (userPrompt.isBlank()) {
-            return errorResult("userPrompt cannot be empty")
-        }
-
-        // Validate optional fields with defaults
+        val systemPrompt = input.optString("systemPrompt", null) ?: return errorResult("Missing required field: systemPrompt")
+        val userPrompt = input.optString("userPrompt", null) ?: return errorResult("Missing required field: userPrompt")
+        if (systemPrompt.isBlank()) return errorResult("systemPrompt cannot be empty")
+        if (userPrompt.isBlank()) return errorResult("userPrompt cannot be empty")
         val temperature = input.optDouble("temperature", 0.7).toFloat()
-        if (temperature < MIN_TEMPERATURE || temperature > MAX_TEMPERATURE) {
-            return errorResult("temperature must be between $MIN_TEMPERATURE and $MAX_TEMPERATURE")
-        }
-
+        if (temperature !in MIN_TEMPERATURE..MAX_TEMPERATURE) return errorResult("temperature must be between $MIN_TEMPERATURE and $MAX_TEMPERATURE")
         val maxTokens = input.optInt("maxTokens", 256)
-        if (maxTokens <= 0 || maxTokens > MAX_TOKENS_LIMIT) {
-            return errorResult("maxTokens must be between 1 and $MAX_TOKENS_LIMIT")
-        }
-
-        // Make synchronous call - we're already in a coroutine context from WorkflowExecutor
-        val result = runBlocking {
-            generateResponse(
-                systemPrompt = systemPrompt,
-                userPrompt = userPrompt,
-                temperature = temperature,
-                maxTokens = maxTokens
-            )
-        }
-
-        return result.fold(
-            onSuccess = { response ->
-                successResult(mapOf("response" to response))
-            },
-            onFailure = { error ->
-                errorResult(error.message ?: "LLM request failed")
-            }
+        if (maxTokens !in 1..MAX_TOKENS_LIMIT) return errorResult("maxTokens must be between 1 and $MAX_TOKENS_LIMIT")
+        return runBlocking { generateResponse(systemPrompt, userPrompt, temperature, maxTokens) }.fold(
+            onSuccess = { successResult(mapOf("response" to it)) },
+            onFailure = { errorResult(it.message ?: "LLM request failed") }
         )
     }
-
-    /**
-     * Generate a response from the LLM.
-     * @param systemPrompt System instructions for the model
-     * @param userPrompt User's query
-     * @param temperature Randomness (0.0-2.0)
-     * @param maxTokens Maximum tokens to generate
-     * @return Generated text response
-     */
-    private suspend fun generateResponse(
-        systemPrompt: String,
-        userPrompt: String,
-        temperature: Float = 0.7f,
-        maxTokens: Int = 256
-    ): Result<String> = withContext(Dispatchers.IO) {
-        val startTime = System.currentTimeMillis()
-
+    private suspend fun generateResponse(systemPrompt: String, userPrompt: String, temperature: Float = 0.7f, maxTokens: Int = 256) = withContext(Dispatchers.IO) {
         try {
-            val request = LlmRequest(
-                model = MODEL,
-                messages = listOf(
-                    Message(role = "system", content = systemPrompt),
-                    Message(role = "user", content = userPrompt)
-                ),
-                temperature = temperature,
-                max_tokens = maxTokens,
-                stream = false
-            )
-
-            val response = makeApiCall(request)
-            val latency = System.currentTimeMillis() - startTime
-
-            Log.d(TAG, "Response received in ${latency}ms")
-            Log.d(TAG, "Tokens used: ${response.usage?.total_tokens ?: "unknown"}")
-
-            val text = response.choices.firstOrNull()?.message?.content
-                ?: return@withContext Result.failure(Exception("Empty response from API"))
-
-            if (text.isBlank()) {
-                return@withContext Result.failure(Exception("LLM returned blank response"))
-            }
-
-            Result.success(text)
+            makeApiCall(LlmRequest(MODEL, listOf(Message("system", systemPrompt), Message("user", userPrompt)), temperature, maxTokens, false))
+                .choices.firstOrNull()?.message?.content?.takeIf { it.isNotBlank() }?.let { Result.success(it) }
+                ?: Result.failure(Exception("Empty response from API"))
         } catch (e: Exception) {
-            Log.e(TAG, "API call failed", e)
             Result.failure(e)
         }
     }
-
-    private fun makeApiCall(request: LlmRequest): LlmResponse {
-        val url = URL(API_URL)
-        val connection = url.openConnection() as HttpURLConnection
-
+    private fun makeApiCall(request: LlmRequest) = (URL(API_URL).openConnection() as HttpURLConnection).run {
         try {
-            connection.apply {
+            apply {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Authorization", "Bearer ${BuildConfig.GROQ_API_KEY}")
@@ -169,89 +63,34 @@ class GroqLlmService {
                 readTimeout = TIMEOUT_MS
                 doOutput = true
             }
-
-            // Write request
-            val requestJson = buildRequestJson(request)
-            OutputStreamWriter(connection.outputStream).use { writer ->
-                writer.write(requestJson)
-                writer.flush()
-            }
-
-            // Read response
-            val responseCode = connection.responseCode
+            OutputStreamWriter(outputStream).use { it.write(buildRequestJson(request)); it.flush() }
             if (responseCode != HttpURLConnection.HTTP_OK) {
-                val errorStream = connection.errorStream
-                val errorBody = errorStream?.bufferedReader()?.use { it.readText() } ?: "No error body"
-                throw Exception("API error $responseCode: $errorBody")
+                throw Exception("API error $responseCode: ${errorStream?.bufferedReader()?.use { it.readText() } ?: "No error body"}")
             }
-
-            val responseBody = BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
-                reader.readText()
-            }
-
-            return parseResponse(responseBody)
+            parseResponse(BufferedReader(InputStreamReader(inputStream)).use { it.readText() })
         } finally {
-            connection.disconnect()
+            disconnect()
         }
     }
-
-    private fun buildRequestJson(request: LlmRequest): String {
-        val json = JSONObject()
-        json.put("model", request.model)
-        json.put("temperature", request.temperature)
-        json.put("max_tokens", request.max_tokens)
-        json.put("stream", request.stream)
-
-        val messages = JSONArray()
-        request.messages.forEach { message ->
-            val msgObj = JSONObject()
-            msgObj.put("role", message.role)
-            msgObj.put("content", message.content)
-            messages.put(msgObj)
-        }
-        json.put("messages", messages)
-
-        return json.toString()
-    }
-
-    private fun parseResponse(responseBody: String): LlmResponse {
-        val json = JSONObject(responseBody)
-
-        val choicesArray = json.getJSONArray("choices")
-        val choices = mutableListOf<com.ambientai.data.Choice>()
-
-        for (i in 0 until choicesArray.length()) {
-            val choiceObj = choicesArray.getJSONObject(i)
-            val messageObj = choiceObj.getJSONObject("message")
-
-            val message = Message(
-                role = messageObj.getString("role"),
-                content = messageObj.getString("content")
-            )
-
-            choices.add(
-                com.ambientai.data.Choice(
-                    message = message,
-                    finish_reason = choiceObj.optString("finish_reason", null)
-                )
-            )
-        }
-
-        val usage = if (json.has("usage")) {
-            val usageObj = json.getJSONObject("usage")
-            com.ambientai.data.Usage(
-                prompt_tokens = usageObj.getInt("prompt_tokens"),
-                completion_tokens = usageObj.getInt("completion_tokens"),
-                total_tokens = usageObj.getInt("total_tokens")
-            )
-        } else {
-            null
-        }
-
-        return LlmResponse(
+    private fun buildRequestJson(request: LlmRequest) = JSONObject().apply {
+        put("model", request.model)
+        put("temperature", request.temperature)
+        put("max_tokens", request.max_tokens)
+        put("stream", request.stream)
+        put("messages", JSONArray().apply { request.messages.forEach { msg -> put(JSONObject().apply { put("role", msg.role); put("content", msg.content) }) } })
+    }.toString()
+    private fun parseResponse(responseBody: String) = JSONObject(responseBody).let { json ->
+        LlmResponse(
             id = json.getString("id"),
-            choices = choices,
-            usage = usage
+            choices = List(json.getJSONArray("choices").length()) { i ->
+                json.getJSONArray("choices").getJSONObject(i).let { choice ->
+                    com.ambientai.data.Choice(
+                        message = choice.getJSONObject("message").let { Message(it.getString("role"), it.getString("content")) },
+                        finish_reason = choice.optString("finish_reason", null)
+                    )
+                }
+            },
+            usage = json.optJSONObject("usage")?.let { com.ambientai.data.Usage(it.getInt("prompt_tokens"), it.getInt("completion_tokens"), it.getInt("total_tokens")) }
         )
     }
 }
