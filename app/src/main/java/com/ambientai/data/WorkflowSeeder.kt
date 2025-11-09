@@ -1,11 +1,9 @@
 package com.ambientai.data
 
-import android.content.Context
-import android.util.Log
 import com.ambientai.data.entities.WorkflowDefinition
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
 
-class WorkflowSeeder() {
+class WorkflowSeeder {
     private val repo = WorkflowDefinitionRepository()
     fun seed() {
         seedTaskWorkflows()
@@ -115,8 +113,6 @@ class WorkflowSeeder() {
     ]}
   ]
 }""".trimIndent()))
-
-        Log.d("WorkflowSeeder", "Seeded 5 task workflows")
     }
 
     private fun seedLogWorkflow() {
@@ -137,8 +133,6 @@ class WorkflowSeeder() {
     {"action":"tts.speak","input":{"text":"Logged ${'$'}classification.response.type"}}
   ]
 }""".trimIndent()))
-
-        Log.d("WorkflowSeeder", "Seeded log workflow")
     }
 
     private fun seedNarrativeWorkflow() {
@@ -175,8 +169,5 @@ class WorkflowSeeder() {
   ]
 }""".trimIndent()
         ))
-
-        Log.d("WorkflowSeeder", "Seeded narrative workflow")
     }
-
 }
