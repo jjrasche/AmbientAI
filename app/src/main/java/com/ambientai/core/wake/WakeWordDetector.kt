@@ -12,6 +12,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import java.io.File
@@ -20,10 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 import com.ambientai.BuildConfig
 
-class WakeWordDetector(
-    private val context: Context,
-    private val onWakeWordDetected: () -> Unit
-) {
+class WakeWordDetector(private val context: Context, private val onWakeWordDetected: () -> Unit) {
     private var porcupine: Porcupine? = null
     private var audioRecord: AudioRecord? = null
     private var audioManager: AudioManager? = null
@@ -38,84 +36,44 @@ class WakeWordDetector(
 
     fun initialize() {
         audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        Log.d(TAG, "WakeWordDetector initialized")
     }
-
     fun start() {
-        if (isListening.get()) {
-            Log.w(TAG, "Already listening")
-            return
-        }
-
+        if (isListening.get()) return
         setupBluetoothIfAvailable()
-
         CoroutineScope(Dispatchers.Main).launch {
-            delay(500) // Brief delay for audio routing
+            delay(500)
             initializePorcupineAndStart()
         }
     }
 
     private fun setupBluetoothIfAvailable() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            Log.w(TAG, "Modern Bluetooth API requires Android 12+")
-            return
-        }
-
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         val devices = audioManager?.availableCommunicationDevices ?: return
         bluetoothDevice = devices.firstOrNull { device ->
-            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    device.type == AudioDeviceInfo.TYPE_BLE_HEADSET
+            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || device.type == AudioDeviceInfo.TYPE_BLE_HEADSET
         }
-
-        if (bluetoothDevice == null) {
-            Log.d(TAG, "No Bluetooth device found, using phone mic")
-            return
-        }
-
-        Log.d(TAG, "Found Bluetooth: ${bluetoothDevice?.productName}")
-
+        if (bluetoothDevice == null) return
         audioDeviceCallback = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-                Log.d(TAG, "Audio devices added: ${addedDevices.size}")
-            }
-
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-                Log.d(TAG, "Audio devices removed: ${removedDevices.size}")
-            }
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {}
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {}
         }
         audioManager?.registerAudioDeviceCallback(audioDeviceCallback, null)
-
         val result = audioManager?.setCommunicationDevice(bluetoothDevice!!) ?: false
-        if (result) {
-            Log.d(TAG, "Set Bluetooth communication device")
-        } else {
-            Log.w(TAG, "Failed to set Bluetooth device")
-            bluetoothDevice = null
-        }
+        if (!result) bluetoothDevice = null
     }
 
     private fun initializePorcupineAndStart() {
         try {
-            // Cleanup previous instance
             porcupine?.delete()
-
-            val modelPath = extractAssetToFile(WAKE_WORD_FILE)
-
             porcupine = Porcupine.Builder()
                 .setAccessKey(BuildConfig.PICOVOICE_ACCESS_KEY)
-                .setKeywordPath(modelPath)
+                .setKeywordPath(extractAssetToFile(WAKE_WORD_FILE))
                 .build(context)
-
-            Log.d(TAG, "Porcupine initialized")
-
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-                Log.e(TAG, "RECORD_AUDIO permission not granted")
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                Log.e("WakeWordDetector", "RECORD_AUDIO permission not granted")
                 return
             }
-
             val porcupineInstance = porcupine ?: return
-
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                 porcupineInstance.sampleRate,
@@ -123,60 +81,39 @@ class WakeWordDetector(
                 AudioFormat.ENCODING_PCM_16BIT,
                 porcupineInstance.frameLength * 2
             )
-
             if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "AudioRecord failed to initialize")
+                Log.e("WakeWordDetector", "AudioRecord failed to initialize")
                 return
             }
-
-            Log.d(TAG, "AudioRecord initialized (Bluetooth: ${bluetoothDevice != null})")
-
             isListening.set(true)
             audioRecord?.startRecording()
-
-            detectionJob = CoroutineScope(Dispatchers.IO).launch {
-                detectWakeWord(porcupineInstance)
-            }
-
-            Log.d(TAG, "Started listening")
+            detectionJob = CoroutineScope(Dispatchers.IO).launch { detectWakeWord(porcupineInstance) }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start", e)
+            Log.e("WakeWordDetector", "Failed to start", e)
             stop()
         }
     }
-
-    private fun extractAssetToFile(assetName: String): String {
-        val file = File(context.filesDir, assetName)
+    private fun extractAssetToFile(assetName: String) = File(context.filesDir, assetName).also { file ->
         if (!file.exists() || file.length() == 0L) {
             context.assets.open(assetName).use { input ->
-                FileOutputStream(file).use { output ->
-                    input.copyTo(output)
-                }
+                FileOutputStream(file).use { output -> input.copyTo(output) }
             }
         }
-        return file.absolutePath
-    }
+    }.absolutePath
 
     private suspend fun detectWakeWord(porcupine: Porcupine) {
         val buffer = ShortArray(porcupine.frameLength)
-
         while (isListening.get() && coroutineContext.isActive) {
             val numRead = audioRecord?.read(buffer, 0, buffer.size) ?: -1
             if (numRead < 0) break
             try {
                 val keywordIndex = porcupine.process(buffer)
-                if (keywordIndex >= 0) {
-                    Log.d(TAG, "Wake word detected!")
-                    withContext(Dispatchers.Main) {
-                        onWakeWordDetected()
-                    }
-                }
+                if (keywordIndex >= 0) withContext(Dispatchers.Main) { onWakeWordDetected() }
             } catch (e: PorcupineException) {
-                Log.e(TAG, "Error processing audio", e)
+                Log.e("WakeWordDetector", "Error processing audio", e)
             }
         }
     }
-
     fun stop() {
         isListening.set(false)
         detectionJob?.cancel()
@@ -184,24 +121,14 @@ class WakeWordDetector(
         audioRecord?.apply { if (state == AudioRecord.STATE_INITIALIZED) stop(); release() }
         audioRecord = null
     }
-
     fun cleanup() {
         stop()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            audioManager?.clearCommunicationDevice()
-        }
-
-        audioDeviceCallback?.let {
-            audioManager?.unregisterAudioDeviceCallback(it)
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager?.clearCommunicationDevice()
+        audioDeviceCallback?.let { audioManager?.unregisterAudioDeviceCallback(it) }
         audioDeviceCallback = null
         bluetoothDevice = null
-
         porcupine?.delete()
         porcupine = null
         audioManager = null
-
-        Log.d(TAG, "Cleaned up")
     }
 }
