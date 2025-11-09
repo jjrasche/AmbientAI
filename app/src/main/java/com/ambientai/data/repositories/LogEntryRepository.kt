@@ -19,11 +19,9 @@ class LogEntryRepository {
     fun deleteAll() = box.removeAll()
     fun count() = box.count()
     fun countByType(type: String) = box.query(LogEntry_.type.equal(type)).build().count()
-
     fun getAll() = box.query().order(LogEntry_.timestamp, OrderFlags.DESCENDING).build().find()
     fun getByType(type: String) = box.query(LogEntry_.type.equal(type)).order(LogEntry_.timestamp, OrderFlags.DESCENDING).build().find()
     fun getByTimeRange(startTime: Long, endTime: Long) = box.query().between(LogEntry_.timestamp, startTime, endTime).order(LogEntry_.timestamp, OrderFlags.DESCENDING).build().find()
-
     fun getAllLogs(): Flow<List<LogEntry>> = callbackFlow {
         val subscription = box.query().order(LogEntry_.timestamp, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }
         awaitClose { subscription.cancel() }

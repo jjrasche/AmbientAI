@@ -20,7 +20,6 @@ class WorkflowExecutionRepository {
     fun saveAction(log: ActionExecution) = log.also { actionBox.put(it) }
     fun getExecutionById(id: Long) = executionBox.get(id)
     fun getActionsForExecution(executionId: Long) = actionBox.query(ActionExecution_.workflowExecutionId.equal(executionId)).build().find()
-
     fun getRecentExecutions(): Flow<List<WorkflowExecution>> = callbackFlow {
         val subscription = executionBox.query().order(WorkflowExecution_.timestamp, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }
         awaitClose { subscription.cancel() }

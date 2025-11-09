@@ -23,17 +23,14 @@ class TaskRepository {
     fun getActive() = taskBox.query(Task_.status.equal(TaskStatus.ACTIVE.ordinal.toLong())).build().findFirst() ?: throw Exception("No active task")
     fun getMostRecentPaused() = taskBox.query(Task_.status.equal(TaskStatus.PAUSED.ordinal.toLong())).order(Task_.createdAt, OrderFlags.DESCENDING).build().findFirst()
     fun count() = taskBox.count()
-
     fun getSessions(taskId: Long) = sessionBox.query(TaskSession_.taskId.equal(taskId)).order(TaskSession_.startedAt).build().find()
     fun getSessionCount(taskId: Long) = sessionBox.query(TaskSession_.taskId.equal(taskId)).build().count()
-
     fun startTask(name: String) = System.currentTimeMillis().let { now ->
         Task(name = name, status = TaskStatus.ACTIVE, createdAt = now).also {
             taskBox.put(it)
             sessionBox.put(TaskSession(taskId = it.id, startedAt = now))
         }
     }
-
     fun pauseTask() = getActive().also {
         (it.sessions?.get(0) ?: throw IllegalStateException("No active session for task ${it.id}"))
             .apply { endedAt = System.currentTimeMillis() }
@@ -41,17 +38,14 @@ class TaskRepository {
         it.status = TaskStatus.PAUSED
         taskBox.put(it)
     }
-
     fun completeTask() = getActive().also {
         it.currentSession()?.apply { endedAt = System.currentTimeMillis() }?.let(sessionBox::put)
         it.status = TaskStatus.COMPLETED
         it.completedAt = System.currentTimeMillis()
         taskBox.put(it)
     }
-
     fun delete(taskId: Long) = getSessions(taskId).forEach(sessionBox::remove).let { taskBox.remove(taskId) }
     fun deleteAll() = sessionBox.removeAll().also { taskBox.removeAll() }
-
     fun getAllTasks(): Flow<List<Task>> = callbackFlow {
         val subscription = taskBox.query().order(Task_.createdAt, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }
         awaitClose { subscription.cancel() }
