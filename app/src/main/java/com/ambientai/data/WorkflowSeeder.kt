@@ -38,6 +38,28 @@ class WorkflowSeeder() {
   ]
 }""".trimIndent()
         ))
+
+        repo.save(WorkflowDefinition(
+            name = "remember_this",
+            enabled = true,
+            definition = """{
+  "triggers":["remember this","remember that","don't forget"],
+  "steps":[
+    {"action":"llm.prompt","input":{
+      "systemPrompt":"Extract what the user wants to remember. Return JSON: {\"memory\": \"what they want remembered\"}",
+      "userPrompt":"${'$'}transcript",
+      "temperature":0.3,
+      "maxTokens":100
+    },"output":"extracted"},
+    {"action":"log.write","input":{
+      "type":"memory",
+      "data":"${'$'}extracted.response",
+      "transcriptId":"${'$'}transcriptId"
+    },"output":"entry"},
+    {"action":"tts.speak","input":{"text":"Got it"}}
+  ]
+}""".trimIndent()
+        ))
     }
     private fun seedTaskWorkflows() {
         val llmPullNameFromTranscriptAction = """{"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},"""
@@ -99,7 +121,7 @@ class WorkflowSeeder() {
 
     private fun seedLogWorkflow() {
         repo.save(WorkflowDefinition(name = "log_entry", enabled = true, definition = """{
-  "triggers":["log"],
+  "triggers":["log this"],
   "steps":[
     {"action":"llm.prompt","input":{
       "systemPrompt":"Classify what's being logged and extract data.\n\nValid types: medication, food, supplement, activity, symptom, unknown\n\nReturn JSON:\n{\n  \"type\": \"<one of the valid types>\",\n  \"data\": {\n    // For medication: {\"name\": \"string\", \"dosage\": \"string\"}\n    // For food: {\"name\": \"string\", \"quantity\": \"string\", \"meal\": \"string\"}\n    // For supplement: {\"name\": \"string\", \"amount\": \"string\"}\n    // For activity: {\"name\": \"string\", \"duration\": \"string\"}\n    // For symptom: {\"name\": \"string\", \"severity\": \"string\"}\n    // Extract whatever fields make sense for the type\n  }\n}\n\nIf unclear, use type: \"unknown\" and capture what you can.",
