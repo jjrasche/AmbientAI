@@ -4,7 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    id("kotlin-kapt")
+    alias(libs.plugins.kotlin.kapt)
+    alias(libs.plugins.hilt.android.gradle)
     id("io.objectbox") // Apply last
 }
 
@@ -67,6 +68,11 @@ dependencies {
     // Existing LiveData support (can be removed later if fully migrated)
     implementation("androidx.compose.runtime:runtime-livedata:1.7.5")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
+
+    // Hilt for dependency injection
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
 
     testImplementation(libs.junit)
 

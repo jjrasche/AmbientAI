@@ -1,47 +1,43 @@
 package com.ambientai.data.repositories
 
-import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.ActionExecution
 import com.ambientai.data.entities.ActionExecution_
 import io.objectbox.Box
+import io.objectbox.BoxStore
 import io.objectbox.kotlin.boxFor
 import io.objectbox.query.OrderFlags
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import org.json.JSONObject
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class ActionExecutionRepository {
-    private val box: Box<ActionExecution> = AmbientAIApp.boxStore.boxFor()
+@Singleton
+class ActionExecutionRepository @Inject constructor(
+    private val boxStore: BoxStore
+) : IActionExecutionRepository {
+    private val box: Box<ActionExecution> = boxStore.boxFor()
 
-    fun save(log: ActionExecution) = log.also { box.put(it) }
-    fun getById(id: Long) = box.get(id)
-    fun count() = box.count()
-    fun countByActionName(actionName: String) = box.query(ActionExecution_.actionName.equal(actionName)).build().count()
-    fun getByWorkflowExecution(executionId: Long) =
+    override fun save(log: ActionExecution) = log.also { box.put(it) }
+    override fun getById(id: Long) = box.get(id)
+    override fun count() = box.count()
+    override fun countByActionName(actionName: String) = box.query(ActionExecution_.actionName.equal(actionName)).build().count()
+    override fun getByWorkflowExecution(executionId: Long) =
         box.query(ActionExecution_.workflowExecutionId.equal(executionId)).order(ActionExecution_.stepIndex).build().find()
-    fun getByActionName(actionName: String) =
+    override fun getByActionName(actionName: String) =
         box.query(ActionExecution_.actionName.equal(actionName)).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-    fun getGraded() =
+    override fun getGraded() =
         box.query().notNull(ActionExecution_.grade).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-    fun getUngraded() =
+    override fun getUngraded() =
         box.query().isNull(ActionExecution_.grade).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-    fun getSlowActions(minLatencyMs: Long) =
+    override fun getSlowActions(minLatencyMs: Long) =
         box.query(ActionExecution_.latencyMs.greater(minLatencyMs)).order(ActionExecution_.latencyMs, OrderFlags.DESCENDING).build().find()
-    fun getFailed() =
+    override fun getFailed() =
         box.query(ActionExecution_.success.equal(false)).order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find()
-    fun updateGrade(id: Long, grade: Int) =
+    override fun updateGrade(id: Long, grade: Int) =
         box.get(id)?.let { it.grade = grade; box.put(it); true } ?: false
-    data class LlmInteractionView(
-        val id: Long,
-        val systemPrompt: String,
-        val userPrompt: String,
-        val response: String,
-        val timestamp: Long,
-        val latencyMs: Long,
-        val grade: Int?
-    )
-    fun getLlmInteractions(): Flow<List<LlmInteractionView>> = callbackFlow {
+    override fun getLlmInteractions(): Flow<List<IActionExecutionRepository.LlmInteractionView>> = callbackFlow {
         val subscription = box.query(ActionExecution_.actionName.equal("llm.prompt"))
             .order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build()
             .subscribe().observer { trySend(it.mapNotNull(::extractLlmView)) }
@@ -51,7 +47,7 @@ class ActionExecutionRepository {
     private fun extractLlmView(action: ActionExecution) = action.takeIf { it.success }?.let {
         JSONObject(it.inputJson).let { input ->
             JSONObject(it.outputJson).let { output ->
-                LlmInteractionView(it.id, input.optString("systemPrompt", ""), input.optString("userPrompt", ""),
+                IActionExecutionRepository.LlmInteractionView(it.id, input.optString("systemPrompt", ""), input.optString("userPrompt", ""),
                     output.optString("response", ""), it.timestamp, it.latencyMs, it.grade)
             }
         }

@@ -14,10 +14,12 @@ interface IWorkflowExecutionRepository {
     fun getAll(): List<WorkflowExecution>
     fun count(): Long
     fun getByWorkflowId(workflowId: Long): List<WorkflowExecution>
+    fun getActionsForExecution(executionId: Long): List<ActionExecution>
 
     // Domain operations
     fun saveAction(actionExecution: ActionExecution): ActionExecution
 
     // Reactive streams
     fun getAllExecutions(): Flow<List<WorkflowExecution>>
+    fun getRecentExecutions(): Flow<List<WorkflowExecution>>
 }

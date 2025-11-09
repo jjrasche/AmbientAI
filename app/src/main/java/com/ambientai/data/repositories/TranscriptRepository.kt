@@ -1,9 +1,9 @@
 package com.ambientai.data.repositories
 
-import com.ambientai.AmbientAIApp
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.entities.Transcript_
 import io.objectbox.Box
+import io.objectbox.BoxStore
 import io.objectbox.kotlin.boxFor
 import io.objectbox.query.OrderFlags
 import kotlinx.coroutines.channels.awaitClose
@@ -11,9 +11,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import java.text.SimpleDateFormat
 import java.util.*
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class TranscriptRepository : ITranscriptRepository {
-    private val box: Box<Transcript> = AmbientAIApp.boxStore.boxFor()
+@Singleton
+class TranscriptRepository @Inject constructor(
+    private val boxStore: BoxStore
+) : ITranscriptRepository {
+    private val box: Box<Transcript> = boxStore.boxFor()
     private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
 
     override fun save(transcript: Transcript) = transcript.also { box.put(it) }

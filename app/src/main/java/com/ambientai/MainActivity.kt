@@ -18,25 +18,23 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
 import com.ambientai.data.entities.Transcript
-import com.ambientai.data.repositories.ActionExecutionRepository
-import com.ambientai.data.repositories.LogEntryRepository
-import com.ambientai.data.repositories.TaskRepository
-import com.ambientai.data.repositories.TranscriptRepository
-import com.ambientai.data.repositories.WorkflowDefinitionRepository
-import com.ambientai.data.repositories.WorkflowExecutionRepository
+import com.ambientai.data.repositories.*
 import com.ambientai.ui.screens.DatabaseScreen
 import com.ambientai.ui.screens.TimelineScreen
 import com.ambientai.ui.theme.AmbientAITheme
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var transcriptRepository: ITranscriptRepository
+    @Inject lateinit var actionExecutionRepository: IActionExecutionRepository
+    @Inject lateinit var workflowDefinitionRepository: IWorkflowDefinitionRepository
+    @Inject lateinit var taskRepository: ITaskRepository
+    @Inject lateinit var workflowExecutionRepository: IWorkflowExecutionRepository
+    @Inject lateinit var logEntryRepository: ILogEntryRepository
     private var voiceService: VoiceListeningService? = null
     private var isBound = false
-    private lateinit var transcriptRepository: TranscriptRepository
-    private lateinit var actionExecutionRepository: ActionExecutionRepository
-    private lateinit var workflowDefinitionRepository: WorkflowDefinitionRepository
-    private lateinit var taskRepository: TaskRepository
-    private lateinit var workflowExecutionRepository: WorkflowExecutionRepository
-    private lateinit var logEntryRepository: LogEntryRepository
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
     private var currentTranscript by mutableStateOf("")
     sealed class Screen {
@@ -58,12 +56,6 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        transcriptRepository = TranscriptRepository()
-        actionExecutionRepository = ActionExecutionRepository()
-        workflowDefinitionRepository = WorkflowDefinitionRepository()
-        taskRepository = TaskRepository()
-        workflowExecutionRepository = WorkflowExecutionRepository()
-        logEntryRepository = LogEntryRepository()
         checkPermissionsAndStart()
         setContent {
             AmbientAITheme {

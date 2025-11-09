@@ -3,8 +3,10 @@ package com.ambientai
 import android.app.Application
 import com.ambientai.data.WorkflowSeeder
 import com.ambientai.data.entities.MyObjectBox
+import dagger.hilt.android.HiltAndroidApp
 import io.objectbox.BoxStore
 
+@HiltAndroidApp
 class AmbientAIApp : Application() {
     companion object {
         lateinit var boxStore: BoxStore
