@@ -23,25 +23,20 @@ class TranscriptRepository {
     fun delete(transcript: Transcript) = box.remove(transcript)
     fun deleteAll() = box.removeAll()
     fun count() = box.count()
-
     fun getAll() = box.query().order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find()
     fun getRecent(limit: Int) = box.query().order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())
     fun getByTimeRange(startTime: Long, endTime: Long) = box.query().between(Transcript_.timestamp, startTime, endTime).order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find()
     fun searchByText(searchText: String) = box.query().contains(Transcript_.text, searchText, io.objectbox.query.QueryBuilder.StringOrder.CASE_INSENSITIVE).order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find()
-
     fun toggleExcludeFromContext(id: Long) = box.get(id)?.let { it.excludeFromContext = !it.excludeFromContext; box.put(it) }
     fun clearContext() = box.all.onEach { it.excludeFromContext = true }.let { box.put(it) }
-
     fun getAllTranscripts(): Flow<List<Transcript>> = callbackFlow {
         val subscription = box.query().order(Transcript_.timestamp, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }
         awaitClose { subscription.cancel() }
     }
-
     fun getRecentTranscripts(limit: Int): Flow<List<Transcript>> = callbackFlow {
         val subscription = box.query().order(Transcript_.timestamp, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it.take(limit)) }
         awaitClose { subscription.cancel() }
     }
-
     fun getRecentContext(chunks: Int) = box.query()
         .equal(Transcript_.excludeFromContext, false)
         .order(Transcript_.timestamp, OrderFlags.DESCENDING)

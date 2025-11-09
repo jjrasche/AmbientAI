@@ -22,7 +22,6 @@ class WorkflowDefinitionRepository {
     fun deleteAll() = box.removeAll()
     fun count() = box.count()
     fun countEnabled() = box.query(WorkflowDefinition_.enabled.equal(true)).build().count()
-
     fun getAllTasks(): Flow<List<WorkflowDefinition>> = callbackFlow {
         val subscription = box.query().build().subscribe().observer { trySend(it) }
         awaitClose { subscription.cancel() }
