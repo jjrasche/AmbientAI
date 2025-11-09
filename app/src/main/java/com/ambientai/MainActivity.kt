@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
     private var isBound = false
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
     private var currentTranscript by mutableStateOf("")
+
     sealed class Screen {
         object Timeline : Screen()
         object Database : Screen()

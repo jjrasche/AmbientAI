@@ -37,6 +37,7 @@ class VoiceListeningService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
+
     companion object {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
@@ -128,14 +129,8 @@ class VoiceListeningService : Service() {
         workflowRouter.loadWorkflows()
         workflowExecutor.loadCompletionTriggers()
     }
-    private fun handleWakeWord() {
-        val wasSpeaking = isTtsSpeaking
-        if (wasSpeaking) {
-            ttsService?.stop()
-            isTtsSpeaking = false
-        } else {
-            wakeWordDetector?.stop()
-        }
+    private fun handleWakeWord() = isTtsSpeaking.also { wasSpeaking ->
+        if (wasSpeaking) { ttsService?.stop(); isTtsSpeaking = false } else wakeWordDetector?.stop()
         updateNotification("Listening...")
         serviceScope.launch { delay(if (wasSpeaking) 100 else 10); speechRecognizer?.start() }
     }

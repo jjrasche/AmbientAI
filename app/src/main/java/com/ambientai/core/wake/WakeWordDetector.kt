@@ -12,7 +12,6 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import java.io.File
@@ -69,29 +68,20 @@ class WakeWordDetector(private val context: Context, private val onWakeWordDetec
                 .setAccessKey(BuildConfig.PICOVOICE_ACCESS_KEY)
                 .setKeywordPath(extractAssetToFile(WAKE_WORD_FILE))
                 .build(context)
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                Log.e("WakeWordDetector", "RECORD_AUDIO permission not granted")
-                return
-            }
-            val porcupineInstance = porcupine ?: return
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+            porcupine ?: return
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                porcupineInstance.sampleRate,
+                porcupine!!.sampleRate,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,
-                porcupineInstance.frameLength * 2
+                porcupine!!.frameLength * 2
             )
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e("WakeWordDetector", "AudioRecord failed to initialize")
-                return
-            }
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) return
             isListening.set(true)
             audioRecord?.startRecording()
-            detectionJob = CoroutineScope(Dispatchers.IO).launch { detectWakeWord(porcupineInstance) }
-        } catch (e: Exception) {
-            Log.e("WakeWordDetector", "Failed to start", e)
-            stop()
-        }
+            detectionJob = CoroutineScope(Dispatchers.IO).launch { detectWakeWord(porcupine!!) }
+        } catch (e: Exception) { stop() }
     }
     private fun extractAssetToFile(assetName: String) = File(context.filesDir, assetName).also { file ->
         if (!file.exists() || file.length() == 0L) {
@@ -109,9 +99,7 @@ class WakeWordDetector(private val context: Context, private val onWakeWordDetec
             try {
                 val keywordIndex = porcupine.process(buffer)
                 if (keywordIndex >= 0) withContext(Dispatchers.Main) { onWakeWordDetected() }
-            } catch (e: PorcupineException) {
-                Log.e("WakeWordDetector", "Error processing audio", e)
-            }
+            } catch (e: PorcupineException) {}
         }
     }
     fun stop() {

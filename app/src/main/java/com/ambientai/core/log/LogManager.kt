@@ -19,21 +19,21 @@ class LogManager @Inject constructor(
         else -> throw Exception("Unknown action: $actionName")
     }
 
-    private fun write(input: JSONObject): JSONObject {
-        val type = input.optString("type", null) ?: throw Exception("Missing required field: type")
-        val data = input.optJSONObject("data") ?: throw Exception("Missing required field: data")
-        val transcriptId = input.optLong("transcriptId", -1).takeIf { it != -1L } ?: throw Exception("Missing required field: transcriptId")
-        val transcript = transcriptRepo.getById(transcriptId) ?: throw Exception("Transcript $transcriptId not found")
-        return LogEntry(type = type, data = data.toString(), timestamp = System.currentTimeMillis()).also {
-            it.transcript.target = transcript
-            repo.save(it)
-        }.let { JSONObject(mapOf("id" to it.id, "type" to it.type, "transcriptId" to transcriptId)) }
-    }
-    private fun query(input: JSONObject): JSONObject {
-        val type = input.optString("type", null)
-        val results = (if (type != null) repo.getByType(type) else repo.getAll()).map {
-            mapOf("id" to it.id, "type" to it.type, "data" to JSONObject(it.data), "timestamp" to it.timestamp, "transcriptId" to it.transcript.targetId)
+    private fun write(input: JSONObject): JSONObject = (input.optString("type", null) ?: throw Exception("Missing required field: type")).let { type ->
+        (input.optJSONObject("data") ?: throw Exception("Missing required field: data")).let { data ->
+            (input.optLong("transcriptId", -1).takeIf { it != -1L } ?: throw Exception("Missing required field: transcriptId")).let { transcriptId ->
+                (transcriptRepo.getById(transcriptId) ?: throw Exception("Transcript $transcriptId not found")).let { transcript ->
+                    LogEntry(type = type, data = data.toString(), timestamp = System.currentTimeMillis()).also {
+                        it.transcript.target = transcript
+                        repo.save(it)
+                    }.let { JSONObject(mapOf("id" to it.id, "type" to it.type, "transcriptId" to transcriptId)) }
+                }
+            }
         }
-        return JSONObject(mapOf("count" to results.size, "entries" to results))
+    }
+    private fun query(input: JSONObject): JSONObject = input.optString("type", null).let { type ->
+        (if (type != null) repo.getByType(type) else repo.getAll()).map {
+            mapOf("id" to it.id, "type" to it.type, "data" to JSONObject(it.data), "timestamp" to it.timestamp, "transcriptId" to it.transcript.targetId)
+        }.let { results -> JSONObject(mapOf("count" to results.size, "entries" to results)) }
     }
 }
