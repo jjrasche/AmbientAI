@@ -9,14 +9,6 @@ abstract class ContextProvider<T>(val key: String, private val cacheDurationMs: 
     private val mutex = Mutex()
 
     protected abstract suspend fun fetch(): T
-    suspend fun get(): T = mutex.withLock {
-        System.currentTimeMillis().let { now ->
-            if (cachedValue == null || now - lastUpdate > cacheDurationMs) {
-                cachedValue = fetch()
-                lastUpdate = now
-            }
-            cachedValue!!
-        }
-    }
-    fun invalidate() { lastUpdate = 0 }
+    suspend fun get(): T = mutex.withLock { System.currentTimeMillis().let { now -> if (cachedValue == null || now - lastUpdate > cacheDurationMs) { cachedValue = fetch(); lastUpdate = now }; cachedValue!! } }
+    fun invalidate() = run { lastUpdate = 0 }
 }

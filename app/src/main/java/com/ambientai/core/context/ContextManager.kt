@@ -4,20 +4,10 @@ import java.util.concurrent.ConcurrentHashMap
 
 object ContextManager {
     private val providers = ConcurrentHashMap<String, ContextProvider<*>>()
-    fun <T> register(provider: ContextProvider<T>) {
-        providers[provider.key] = provider
-    }
-    suspend fun <T> get(key: String): T? {
-        @Suppress("UNCHECKED_CAST")
-        return (providers[key] as? ContextProvider<T>)?.get()
-    }
-    suspend fun getAll(): Map<String, Any?> {
-        return providers.mapValues { it.value.get() }
-    }
-    fun invalidate(key: String) {
-        providers[key]?.invalidate()
-    }
-    fun clearAllProviders() {
-        providers.clear()
-    }
+
+    fun <T> register(provider: ContextProvider<T>) = run { providers[provider.key] = provider }
+    suspend fun <T> get(key: String): T? { @Suppress("UNCHECKED_CAST"); return (providers[key] as? ContextProvider<T>)?.get() }
+    suspend fun getAll() = providers.mapValues { it.value.get() }
+    fun invalidate(key: String) = providers[key]?.invalidate()
+    fun clearAllProviders() = providers.clear()
 }

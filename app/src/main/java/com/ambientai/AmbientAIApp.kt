@@ -11,15 +11,6 @@ class AmbientAIApp : Application() {
             private set
     }
 
-    override fun onCreate() {
-        super.onCreate()
-        boxStore = MyObjectBox.builder()
-            .androidContext(applicationContext)
-            .build()
-    }
-
-    override fun onTerminate() {
-        boxStore.close()
-        super.onTerminate()
-    }
+    override fun onCreate() = super.onCreate().also { boxStore = MyObjectBox.builder().androidContext(applicationContext).build() }
+    override fun onTerminate() = boxStore.close().also { super.onTerminate() }
 }
