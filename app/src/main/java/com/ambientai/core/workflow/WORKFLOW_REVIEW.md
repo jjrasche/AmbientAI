@@ -2,17 +2,29 @@
 
 ## Summary
 
-Workflow review is the **self-improvement engine** of AmbientAI. By analyzing execution patterns, grading LLM performance, and iteratively refining workflows, the system learns your preferences and adapts to your workflow through evidence-based iteration.
+Workflow review is the **self-improvement engine** of AmbientAI. The review process itself is a workflow (`review_workflow`) - making it transparent, editable, and self-improving.
 
 **Core loop**:
 1. Use AmbientAI naturally - execution data accumulates
 2. Open review screen - navigate through workflows visually
 3. Voice record thoughts while examining executions
-4. LLM analyzes your annotations and execution data
+4. System executes `review_workflow` to analyze execution data
 5. Approve/reject suggested changes
 6. System improves to better serve you
 
+**The beautiful recursion**: Because review is a workflow, you can review the review process itself. When you review `review_workflow`, it analyzes its own execution history and suggests improvements to its own analysis prompts. This creates a meta-learning loop where the system learns how to learn better.
+
 This is not product analytics. This is **personal AI that learns how you work** by reviewing what actually happened.
+
+## Architecture
+
+The review system is built on three layers:
+
+1. **`workflow.getExecutionData` action** - Aggregates execution metrics for any workflow (successes, failures, grades, review notes)
+2. **`review_workflow` definition** - JSON workflow that calls getExecutionData → LLM analysis → structured suggestions
+3. **`WorkflowReviewService`** - Thin wrapper that executes review_workflow and extracts suggestions output
+
+All analysis logic lives in the workflow JSON, not Kotlin code. This means review prompts are visible, editable, and refinable through the same review process they power.
 
 ## Philosophy
 
