@@ -14,6 +14,7 @@ class WorkflowSeeder @Inject constructor(
         seedLogWorkflow()
         seedNarrativeWorkflow()
         seedReviewWorkflow()
+        seedTimeWorkflows()
 
         repo.save(WorkflowDefinition(
             name = "web_search",
@@ -198,6 +199,39 @@ class WorkflowSeeder @Inject constructor(
       },
       "output":"suggestions"
     }
+  ]
+}""".trimIndent()
+        ))
+    }
+    private fun seedTimeWorkflows() {
+        repo.save(WorkflowDefinition(
+            name = "get_time",
+            enabled = true,
+            definition = """{
+  "triggers":["give me the time","what's the time","what time","get time"],
+  "steps":[
+    {"action":"time.get","input":{},"output":"time"},
+    {"action":"tts.speak","input":{"text":"${'$'}time.response"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "set_timer",
+            enabled = true,
+            definition = """{
+  "triggers":["set a timer","set timer","timer for","start a timer"],
+  "steps":[
+    {"action":"llm.prompt","input":{
+      "systemPrompt":"Extract the timer duration from the user's input. Return ONLY valid JSON with no markdown fences. Format: {\"minutes\": <number>, \"seconds\": <number>}. If they say '5 minutes', return {\"minutes\": 5, \"seconds\": 0}. If they say '30 seconds', return {\"minutes\": 0, \"seconds\": 30}.",
+      "userPrompt":"${'$'}transcript",
+      "temperature":0.1,
+      "maxTokens":100
+    },"output":"duration"},
+    {"action":"timer.set","input":{
+      "minutes":"${'$'}duration.response.minutes",
+      "seconds":"${'$'}duration.response.seconds"
+    },"output":"timer"},
+    {"action":"tts.speak","input":{"text":"${'$'}timer.message timer set"}}
   ]
 }""".trimIndent()
         ))

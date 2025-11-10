@@ -133,7 +133,10 @@ class VoiceListeningService : Service() {
         if (wasSpeaking) { ttsService?.stop(); isTtsSpeaking = false }
         wakeWordDetector?.stop()
         updateNotification("Listening...")
-        serviceScope.launch { delay(if (wasSpeaking) 100 else 10); speechRecognizer?.start() }
+        serviceScope.launch {
+            launch { speak("yes") }
+            speechRecognizer?.start()
+        }
     }
     private fun handlePartialTranscript(text: String) = listeners.forEach { it.onPartialTranscript(text) }
     private fun handleTranscript(text: String) {
