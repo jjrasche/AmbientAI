@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.ActionExecutionRepository
+import com.ambientai.data.repositories.IActionExecutionRepository
 import com.ambientai.data.repositories.TranscriptRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -21,7 +22,7 @@ class TimelineViewModel(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
-    val llmInteractions: StateFlow<List<ActionExecutionRepository.LlmInteractionView>> =
+    val llmInteractions: StateFlow<List<IActionExecutionRepository.LlmInteractionView>> =
         actionExecutionRepository
             .getLlmInteractions()
             .stateIn(

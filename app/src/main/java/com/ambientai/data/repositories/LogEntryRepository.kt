@@ -20,7 +20,7 @@ class LogEntryRepository @Inject constructor(
 
     override fun save(entry: LogEntry) = entry.also { box.put(it) }
     override fun getById(id: Long) = box.get(id)
-    override fun delete(id: Long) = box.remove(id)
+    override fun delete(id: Long) { box.remove(id) }
     override fun deleteAll() = box.removeAll()
     override fun count() = box.count()
     override fun countByType(type: String) = box.query(LogEntry_.type.equal(type)).build().count()

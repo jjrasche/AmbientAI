@@ -21,4 +21,7 @@ interface IWorkflowDefinitionRepository {
 
     // Reactive streams
     fun getAllWorkflows(): Flow<List<WorkflowDefinition>>
+
+    // Additional operations
+    fun updateReviewNotes(id: Long, notes: String)
 }

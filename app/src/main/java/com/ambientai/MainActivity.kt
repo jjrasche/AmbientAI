@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
                             onNavigateToDb = { currentScreen = Screen.Database }, onToggleExcludeFromContext = ::toggleExcludeFromContext)
                         Screen.Database -> DatabaseScreen(transcriptRepository, actionExecutionRepository, workflowDefinitionRepository,
                             taskRepository, workflowExecutionRepository, logEntryRepository, onBack = { currentScreen = Screen.Timeline }, onNavigateToReview = { currentScreen = Screen.WorkflowReview })
-                        Screen.WorkflowReview -> WorkflowReviewScreen(workflowDefinitionRepository as WorkflowDefinitionRepository, workflowExecutionRepository, actionExecutionRepository as ActionExecutionRepository, workflowReviewService, onBack = { currentScreen = Screen.Database })
+                        Screen.WorkflowReview -> WorkflowReviewScreen(workflowDefinitionRepository, workflowExecutionRepository, actionExecutionRepository, workflowReviewService, onBack = { currentScreen = Screen.Database })
                     }
                 }
             }

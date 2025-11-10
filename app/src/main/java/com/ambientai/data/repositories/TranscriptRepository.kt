@@ -23,16 +23,16 @@ class TranscriptRepository @Inject constructor(
 
     override fun save(transcript: Transcript) = transcript.also { box.put(it) }
     override fun getById(id: Long) = box.get(id)
-    override fun update(transcript: Transcript) = box.put(transcript)
-    override fun delete(id: Long) = box.remove(id)
-    override fun delete(transcript: Transcript) = box.remove(transcript)
+    override fun update(transcript: Transcript) { box.put(transcript) }
+    override fun delete(id: Long) { box.remove(id) }
+    override fun delete(transcript: Transcript) { box.remove(transcript) }
     override fun deleteAll() = box.removeAll()
     override fun count() = box.count()
     override fun getAll() = box.query().order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find()
     override fun getRecent(limit: Int) = box.query().order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())
     override fun getByTimeRange(startTime: Long, endTime: Long) = box.query().between(Transcript_.timestamp, startTime, endTime).order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find()
     override fun searchByText(searchText: String) = box.query().contains(Transcript_.text, searchText, io.objectbox.query.QueryBuilder.StringOrder.CASE_INSENSITIVE).order(Transcript_.timestamp, OrderFlags.DESCENDING).build().find()
-    override fun toggleExcludeFromContext(id: Long) = box.get(id)?.let { it.excludeFromContext = !it.excludeFromContext; box.put(it) }
+    override fun toggleExcludeFromContext(id: Long) { box.get(id)?.let { it.excludeFromContext = !it.excludeFromContext; box.put(it) } }
     override fun clearContext() = box.all.onEach { it.excludeFromContext = true }.let { box.put(it) }
     override fun getAllTranscripts(): Flow<List<Transcript>> = callbackFlow {
         val subscription = box.query().order(Transcript_.timestamp, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }

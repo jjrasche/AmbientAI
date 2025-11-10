@@ -49,7 +49,7 @@ class TaskRepository @Inject constructor(
         it.completedAt = System.currentTimeMillis()
         taskBox.put(it)
     }
-    override fun delete(taskId: Long) = getSessions(taskId).forEach(sessionBox::remove).let { taskBox.remove(taskId) }
+    override fun delete(taskId: Long) { getSessions(taskId).forEach(sessionBox::remove); taskBox.remove(taskId) }
     override fun deleteAll() = sessionBox.removeAll().also { taskBox.removeAll() }
     override fun getAllTasks(): Flow<List<Task>> = callbackFlow {
         val subscription = taskBox.query().order(Task_.createdAt, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }

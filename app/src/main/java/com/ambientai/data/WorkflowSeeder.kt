@@ -1,10 +1,14 @@
 package com.ambientai.data
 
 import com.ambientai.data.entities.WorkflowDefinition
-import com.ambientai.data.repositories.WorkflowDefinitionRepository
+import com.ambientai.data.repositories.IWorkflowDefinitionRepository
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class WorkflowSeeder {
-    private val repo = WorkflowDefinitionRepository()
+@Singleton
+class WorkflowSeeder @Inject constructor(
+    private val repo: IWorkflowDefinitionRepository
+) {
     fun seed() {
         seedTaskWorkflows()
         seedLogWorkflow()

@@ -11,18 +11,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ambientai.data.entities.Transcript
-import com.ambientai.data.repositories.ActionExecutionRepository
-import com.ambientai.data.repositories.TranscriptRepository
+import com.ambientai.data.repositories.IActionExecutionRepository
+import com.ambientai.data.repositories.ITranscriptRepository
 import com.ambientai.ui.components.LlmInteractionCard
 import com.ambientai.ui.components.TranscriptCard
 
 sealed class TimelineItem {
     abstract val timestamp: Long
     data class TranscriptItem(val transcript: Transcript) : TimelineItem() { override val timestamp = transcript.timestamp }
-    data class LlmItem(val interaction: ActionExecutionRepository.LlmInteractionView) : TimelineItem() { override val timestamp = interaction.timestamp }
+    data class LlmItem(val interaction: IActionExecutionRepository.LlmInteractionView) : TimelineItem() { override val timestamp = interaction.timestamp }
 }
 @Composable
-fun TimelineScreen(currentTranscript: String, transcriptRepository: TranscriptRepository, actionExecutionRepository: ActionExecutionRepository, onNavigateToDb: () -> Unit, onToggleExcludeFromContext: (Transcript) -> Unit) {
+fun TimelineScreen(currentTranscript: String, transcriptRepository: ITranscriptRepository, actionExecutionRepository: IActionExecutionRepository, onNavigateToDb: () -> Unit, onToggleExcludeFromContext: (Transcript) -> Unit) {
     val transcripts by transcriptRepository.getRecentTranscripts(20).collectAsStateWithLifecycle(initialValue = emptyList())
     val llmInteractions by actionExecutionRepository.getLlmInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
     val timelineItems = remember(transcripts, llmInteractions) { buildList { addAll(transcripts.map { TimelineItem.TranscriptItem(it) }); addAll(llmInteractions.map { TimelineItem.LlmItem(it) }) }.sortedByDescending { it.timestamp } }

@@ -3,7 +3,6 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.hilt.android.gradle)
     id("io.objectbox") // Apply last
@@ -48,6 +47,9 @@ android {
         compose = true
         buildConfig = true
     }
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.14"
+    }
 }
 
 dependencies {
@@ -59,15 +61,15 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation("androidx.compose.material:material-icons-extended:1.6.5")
     implementation(libs.porcupine.android)
-    implementation(libs.aicore)
 
     // Flow support for Compose - NEW DEPENDENCY
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     // Existing LiveData support (can be removed later if fully migrated)
-    implementation("androidx.compose.runtime:runtime-livedata:1.7.5")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
+    implementation(libs.androidx.compose.runtime.livedata)
+    implementation(libs.lifecycle.livedata.ktx)
 
     // Hilt for dependency injection
     implementation(libs.hilt.android)
@@ -76,7 +78,6 @@ dependencies {
 
     testImplementation(libs.junit)
 
-    androidTestImplementation(libs.aicore)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.core)

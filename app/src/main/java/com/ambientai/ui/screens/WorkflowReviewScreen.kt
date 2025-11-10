@@ -17,16 +17,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ambientai.data.entities.ActionExecution
 import com.ambientai.data.entities.WorkflowDefinition
 import com.ambientai.data.entities.WorkflowExecution
-import com.ambientai.data.repositories.ActionExecutionRepository
-import com.ambientai.data.repositories.WorkflowDefinitionRepository
-import com.ambientai.data.repositories.WorkflowExecutionRepository
+import com.ambientai.data.repositories.IActionExecutionRepository
+import com.ambientai.data.repositories.IWorkflowDefinitionRepository
+import com.ambientai.data.repositories.IWorkflowExecutionRepository
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun WorkflowReviewScreen(workflowDefinitionRepository: WorkflowDefinitionRepository, workflowExecutionRepository: WorkflowExecutionRepository, actionExecutionRepository: ActionExecutionRepository, reviewService: com.ambientai.core.workflow.WorkflowReviewService, onBack: () -> Unit) {
-    val workflows by workflowDefinitionRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+fun WorkflowReviewScreen(workflowDefinitionRepository: IWorkflowDefinitionRepository, workflowExecutionRepository: IWorkflowExecutionRepository, actionExecutionRepository: IActionExecutionRepository, reviewService: com.ambientai.core.workflow.WorkflowReviewService, onBack: () -> Unit) {
+    val workflows by workflowDefinitionRepository.getAllWorkflows().collectAsStateWithLifecycle(initialValue = emptyList())
     var currentWorkflowIndex by remember { mutableStateOf(0) }
     var isRecording by remember { mutableStateOf(false) }
     var reviewNotes by remember { mutableStateOf("") }
@@ -43,31 +43,182 @@ fun WorkflowReviewScreen(workflowDefinitionRepository: WorkflowDefinitionReposit
     if (showSuggestions && currentWorkflow != null) { SuggestionsDialog(workflow = currentWorkflow, executions = executions, reviewService = reviewService, onDismiss = { showSuggestions = false }, workflowDefinitionRepository = workflowDefinitionRepository, workflowExecutionRepository = workflowExecutionRepository) }
 }
 @Composable
-fun WorkflowDefinitionCard(workflow: WorkflowDefinition, notes: String, onNotesChange: (String) -> Unit, repository: WorkflowDefinitionRepository) {
+fun WorkflowDefinitionCard(workflow: WorkflowDefinition, notes: String, onNotesChange: (String) -> Unit, repository: IWorkflowDefinitionRepository) {
     var isExpanded by remember { mutableStateOf(true) }
     Card(modifier = Modifier.fillMaxWidth()) { Column(modifier = Modifier.padding(16.dp)) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(text = workflow.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); IconButton(onClick = { isExpanded = !isExpanded }) { Icon(if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (isExpanded) "Collapse" else "Expand") } }; if (isExpanded) { Spacer(modifier = Modifier.height(8.dp)); Text(text = "Status: ${if (workflow.enabled) "ENABLED" else "DISABLED"}", style = MaterialTheme.typography.bodyMedium, color = if (workflow.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold); Spacer(modifier = Modifier.height(8.dp)); Text(text = "Definition:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold); Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.small) { Text(text = formatJson(workflow.definition), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp)) }; Spacer(modifier = Modifier.height(12.dp)); Text(text = "Review Notes:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold); OutlinedTextField(value = workflow.reviewNotes, onValueChange = { repository.updateReviewNotes(workflow.id, it) }, modifier = Modifier.fillMaxWidth(), placeholder = { Text("Voice annotations will appear here...") }, minLines = 3, maxLines = 6) } } }
 }
 @Composable
-fun WorkflowExecutionCard(execution: WorkflowExecution, executionRepository: WorkflowExecutionRepository, actionRepository: ActionExecutionRepository) {
+fun WorkflowExecutionCard(execution: WorkflowExecution, executionRepository: IWorkflowExecutionRepository, actionRepository: IActionExecutionRepository) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault()) }
     var isExpanded by remember { mutableStateOf(false) }
     val actions = remember(execution.id, isExpanded) { if (isExpanded) executionRepository.getActionsForExecution(execution.id) else emptyList() }
     Card(modifier = Modifier.fillMaxWidth().clickable { isExpanded = !isExpanded }, colors = CardDefaults.cardColors(containerColor = if (execution.success) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer)) { Column(modifier = Modifier.padding(12.dp)) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = dateFormat.format(Date(execution.timestamp)), style = MaterialTheme.typography.labelSmall); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text(text = "${execution.executionTimeMs}ms", style = MaterialTheme.typography.labelSmall); Text(text = if (execution.success) "✓" else "✗", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (execution.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) } }; Text(text = "Trigger: ${execution.matchedTrigger}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(text = execution.transcript, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium); execution.errorMessage?.let { Spacer(modifier = Modifier.height(4.dp)); Text(text = "Error: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }; if (isExpanded && actions.isNotEmpty()) { Spacer(modifier = Modifier.height(12.dp)); HorizontalDivider(); Spacer(modifier = Modifier.height(8.dp)); actions.forEach { action -> ActionExecutionRow(action, actionRepository); Spacer(modifier = Modifier.height(8.dp)) } }; if (!isExpanded && actions.isNotEmpty()) { Spacer(modifier = Modifier.height(8.dp)); Text(text = "▼ ${actions.size} actions", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) } } }
 }
 @Composable
-fun ActionExecutionRow(action: ActionExecution, repository: ActionExecutionRepository) {
+fun ActionExecutionRow(action: ActionExecution, repository: IActionExecutionRepository) {
     var currentGrade by remember { mutableStateOf(action.grade) }
     Surface(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.small, tonalElevation = 2.dp) { Column(modifier = Modifier.padding(12.dp)) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = action.actionName, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold); Text(text = "${action.latencyMs}ms", style = MaterialTheme.typography.labelSmall) }; Text(text = "Step: ${action.stepPath}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); if (!action.success && action.errorMessage != null) { Spacer(modifier = Modifier.height(4.dp)); Text(text = "Error: ${action.errorMessage}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error) }; if (action.inputJson.isNotBlank()) { Spacer(modifier = Modifier.height(4.dp)); Text(text = "Input:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold); Text(text = formatJson(action.inputJson), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; if (action.outputJson.isNotBlank()) { Spacer(modifier = Modifier.height(4.dp)); Text(text = "Output:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold); Text(text = formatJson(action.outputJson), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; if (action.actionName.contains("llm")) { Spacer(modifier = Modifier.height(8.dp)); HorizontalDivider(); Spacer(modifier = Modifier.height(8.dp)); Text(text = "Grade this LLM action:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold); Spacer(modifier = Modifier.height(4.dp)); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { (1..5).forEach { grade -> IconButton(onClick = { currentGrade = grade; repository.updateGrade(action.id, grade) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Star, contentDescription = "Grade $grade", tint = if (currentGrade != null && grade <= currentGrade!!) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)) } }; currentGrade?.let { Text(text = "★ $it/5", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterVertically)) } } } } }
 }
 @Composable
-fun SuggestionsDialog(workflow: WorkflowDefinition, executions: List<WorkflowExecution>, reviewService: com.ambientai.core.workflow.WorkflowReviewService, workflowDefinitionRepository: WorkflowDefinitionRepository, workflowExecutionRepository: WorkflowExecutionRepository, onDismiss: () -> Unit) {
+fun SuggestionsDialog(
+    workflow: WorkflowDefinition,
+    executions: List<WorkflowExecution>,
+    reviewService: com.ambientai.core.workflow.WorkflowReviewService,
+    workflowDefinitionRepository: IWorkflowDefinitionRepository,
+    workflowExecutionRepository: IWorkflowExecutionRepository,
+    onDismiss: () -> Unit
+) {
     var suggestions by remember { mutableStateOf<com.ambientai.core.workflow.ReviewSuggestions?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(workflow.id) { try { suggestions = reviewService.generateSuggestions(workflow, executions); isLoading = false } catch (e: Exception) { error = e.message; isLoading = false } }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Suggestions for ${workflow.name}") }, text = { Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)) { when { isLoading -> { CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally)); Text("Analyzing ${executions.size} executions...", modifier = Modifier.padding(top = 16.dp)) } error != null -> Text("Error: $error", color = MaterialTheme.colorScheme.error) suggestions != null -> { LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) { suggestions?.workflowRefinements?.let { refinements -> if (refinements.isNotEmpty()) { item { Text("Workflow Refinements (${refinements.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }; items(refinements) { ref -> Card(modifier = Modifier.fillMaxWidth()) { Column(modifier = Modifier.padding(12.dp)) { Text(text = ref.type.uppercase().replace("_", " "), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold); Text(text = "Path: ${ref.path}", style = MaterialTheme.typography.bodySmall); if (ref.oldValue.isNotEmpty()) Text(text = "Old: ${ref.oldValue.take(100)}", style = MaterialTheme.typography.bodySmall); Text(text = "New: ${ref.value.take(100)}", style = MaterialTheme.typography.bodySmall); Text(text = ref.rationale, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } } }
-                suggestions?.workflowExpansions?.let { expansions -> if (expansions.isNotEmpty()) { item { Text("New Workflow Suggestions (${expansions.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }; items(expansions) { exp -> Card(modifier = Modifier.fillMaxWidth()) { Column(modifier = Modifier.padding(12.dp)) { Text(text = exp.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold); Text(text = "Triggers: ${exp.triggers.joinToString(", ")}", style = MaterialTheme.typography.bodySmall); Text(text = exp.rationale, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } } }
-                suggestions?.llmGradingInsights?.let { insights -> if (insights.isNotEmpty()) { item { Text("LLM Grading Insights (${insights.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold) }; items(insights) { insight -> Card(modifier = Modifier.fillMaxWidth()) { Column(modifier = Modifier.padding(12.dp)) { Text(text = "Suggested Grade: ${insight.suggestedGrade}/5", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold); Text(text = insight.notes, style = MaterialTheme.typography.bodySmall) } } } } }
-                if (suggestions?.workflowRefinements?.isEmpty() == true && suggestions?.workflowExpansions?.isEmpty() == true && suggestions?.llmGradingInsights?.isEmpty() == true) { item { Text("No suggestions at this time. The workflow appears to be functioning well!", style = MaterialTheme.typography.bodyMedium) } } } } } } }, confirmButton = { Button(onClick = onDismiss) { Text("Close") } })
+
+    LaunchedEffect(workflow.id) {
+        try {
+            suggestions = reviewService.generateSuggestions(workflow, executions)
+            isLoading = false
+        } catch (e: Exception) {
+            error = e.message
+            isLoading = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Suggestions for ${workflow.name}") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
+                when {
+                    isLoading -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                        Text("Analyzing ${executions.size} executions...", modifier = Modifier.padding(top = 16.dp))
+                    }
+                    error != null -> {
+                        Text("Error: $error", color = MaterialTheme.colorScheme.error)
+                    }
+                    suggestions != null -> {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            suggestions?.workflowRefinements?.let { refinements ->
+                                if (refinements.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            "Workflow Refinements (${refinements.size})",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    items(refinements) { ref ->
+                                        Card(modifier = Modifier.fillMaxWidth()) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text(
+                                                    text = ref.type.uppercase().replace("_", " "),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "Path: ${ref.path}",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                                if (ref.oldValue.isNotEmpty()) {
+                                                    Text(
+                                                        text = "Old: ${ref.oldValue.take(100)}",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "New: ${ref.value.take(100)}",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                                Text(
+                                                    text = ref.rationale,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            suggestions?.workflowExpansions?.let { expansions ->
+                                if (expansions.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            "New Workflow Suggestions (${expansions.size})",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    items(expansions) { exp ->
+                                        Card(modifier = Modifier.fillMaxWidth()) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text(
+                                                    text = exp.name,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "Triggers: ${exp.triggers.joinToString(", ")}",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                                Text(
+                                                    text = exp.rationale,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            suggestions?.llmGradingInsights?.let { insights ->
+                                if (insights.isNotEmpty()) {
+                                    item {
+                                        Text(
+                                            "LLM Grading Insights (${insights.size})",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    items(insights) { insight ->
+                                        Card(modifier = Modifier.fillMaxWidth()) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text(
+                                                    text = "Suggested Grade: ${insight.suggestedGrade}/5",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = insight.notes,
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (suggestions?.workflowRefinements?.isEmpty() == true &&
+                                suggestions?.workflowExpansions?.isEmpty() == true &&
+                                suggestions?.llmGradingInsights?.isEmpty() == true
+                            ) {
+                                item {
+                                    Text(
+                                        "No suggestions at this time. The workflow appears to be functioning well!",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 private fun formatJson(json: String): String = try { JSONObject(json).toString(2) } catch (e: Exception) { json }
