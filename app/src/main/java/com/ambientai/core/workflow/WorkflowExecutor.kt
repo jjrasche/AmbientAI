@@ -40,7 +40,7 @@ class WorkflowExecutor @Inject constructor(
             JSONObject(match.definition.definition).getJSONArray("steps").let { steps -> (0 until steps.length()).forEach { i -> executeStep(steps.getJSONObject(i), match.context, executionLog.id, i, "$i") } }
             executionLog.apply { success = true; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }
             triggerCompletionWorkflows(match.definition.name, match.context)
-            WorkflowResult.Success
+            WorkflowResult.Success(match.context.variables)
         }.getOrElse { e ->
             executionLog.apply { success = false; errorMessage = e.message; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }
             WorkflowResult.Failure(e.message ?: "Unknown error")
@@ -80,7 +80,7 @@ class WorkflowExecutor @Inject constructor(
     private fun compare(left: Any?, right: Any?, operator: String): Boolean = when (operator) { "===" -> left === right || (left == null && right == null) || left == right; "!==" -> !(left === right || (left == null && right == null) || left == right); "==" -> left == right; "!=" -> left != right; ">", "<", ">=", "<=" -> { val leftNum = (left as? Number)?.toDouble() ?: throw IllegalArgumentException("Cannot compare non-numeric value: $left"); val rightNum = (right as? Number)?.toDouble() ?: throw IllegalArgumentException("Cannot compare non-numeric value: $right"); when (operator) { ">" -> leftNum > rightNum; "<" -> leftNum < rightNum; ">=" -> leftNum >= rightNum; "<=" -> leftNum <= rightNum; else -> false } }; else -> throw IllegalArgumentException("Unknown operator: $operator") }
 }
 sealed class WorkflowResult {
-    object Success : WorkflowResult()
+    data class Success(val variables: Map<String, Any>) : WorkflowResult()
     data class Failure(val error: String) : WorkflowResult()
 }
 class UnknownActionException(actionName: String) : Exception("Unknown action: $actionName")
