@@ -5,6 +5,7 @@ import com.ambientai.core.log.LogManager
 import com.ambientai.core.search.SearchService
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.tts.TextToSpeechService
+import com.ambientai.core.workflow.actions.WorkflowActionHandler
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.entities.ActionExecution
 import com.ambientai.data.repositories.IWorkflowDefinitionRepository
@@ -24,7 +25,8 @@ class WorkflowExecutor @Inject constructor(
     private val tasks: TaskManager,
     private val llm: GroqLlmService,
     private val search: SearchService,
-    private val logs: LogManager
+    private val logs: LogManager,
+    private val workflowActions: WorkflowActionHandler
 ) {
     private var completionTriggers = mapOf<String, List<Long>>()
 
@@ -38,7 +40,7 @@ class WorkflowExecutor @Inject constructor(
             JSONObject(match.definition.definition).getJSONArray("steps").let { steps -> (0 until steps.length()).forEach { i -> executeStep(steps.getJSONObject(i), match.context, executionLog.id, i, "$i") } }
             executionLog.apply { success = true; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }
             triggerCompletionWorkflows(match.definition.name, match.context)
-            WorkflowResult.Success
+            WorkflowResult.Success(match.context.variables)
         }.getOrElse { e ->
             executionLog.apply { success = false; errorMessage = e.message; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }
             WorkflowResult.Failure(e.message ?: "Unknown error")
@@ -52,7 +54,7 @@ class WorkflowExecutor @Inject constructor(
         val startTime = System.currentTimeMillis()
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
-            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
+            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = System.currentTimeMillis()))
         }.onFailure { e ->
@@ -78,7 +80,7 @@ class WorkflowExecutor @Inject constructor(
     private fun compare(left: Any?, right: Any?, operator: String): Boolean = when (operator) { "===" -> left === right || (left == null && right == null) || left == right; "!==" -> !(left === right || (left == null && right == null) || left == right); "==" -> left == right; "!=" -> left != right; ">", "<", ">=", "<=" -> { val leftNum = (left as? Number)?.toDouble() ?: throw IllegalArgumentException("Cannot compare non-numeric value: $left"); val rightNum = (right as? Number)?.toDouble() ?: throw IllegalArgumentException("Cannot compare non-numeric value: $right"); when (operator) { ">" -> leftNum > rightNum; "<" -> leftNum < rightNum; ">=" -> leftNum >= rightNum; "<=" -> leftNum <= rightNum; else -> false } }; else -> throw IllegalArgumentException("Unknown operator: $operator") }
 }
 sealed class WorkflowResult {
-    object Success : WorkflowResult()
+    data class Success(val variables: Map<String, Any>) : WorkflowResult()
     data class Failure(val error: String) : WorkflowResult()
 }
 class UnknownActionException(actionName: String) : Exception("Unknown action: $actionName")

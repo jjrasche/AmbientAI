@@ -22,4 +22,5 @@ interface IWorkflowExecutionRepository {
     // Reactive streams
     fun getAllExecutions(): Flow<List<WorkflowExecution>>
     fun getRecentExecutions(): Flow<List<WorkflowExecution>>
+    fun getExecutionsForWorkflow(workflowId: Long): Flow<List<WorkflowExecution>>
 }

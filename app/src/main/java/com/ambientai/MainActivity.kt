@@ -21,6 +21,7 @@ import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.*
 import com.ambientai.ui.screens.DatabaseScreen
 import com.ambientai.ui.screens.TimelineScreen
+import com.ambientai.ui.screens.WorkflowReviewScreen
 import com.ambientai.ui.theme.AmbientAITheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -33,6 +34,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var taskRepository: ITaskRepository
     @Inject lateinit var workflowExecutionRepository: IWorkflowExecutionRepository
     @Inject lateinit var logEntryRepository: ILogEntryRepository
+    @Inject lateinit var workflowReviewService: com.ambientai.core.workflow.WorkflowReviewService
     private var voiceService: VoiceListeningService? = null
     private var isBound = false
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
@@ -41,6 +43,7 @@ class MainActivity : ComponentActivity() {
     sealed class Screen {
         object Timeline : Screen()
         object Database : Screen()
+        object WorkflowReview : Screen()
     }
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -65,7 +68,8 @@ class MainActivity : ComponentActivity() {
                         Screen.Timeline -> TimelineScreen(currentTranscript, transcriptRepository, actionExecutionRepository,
                             onNavigateToDb = { currentScreen = Screen.Database }, onToggleExcludeFromContext = ::toggleExcludeFromContext)
                         Screen.Database -> DatabaseScreen(transcriptRepository, actionExecutionRepository, workflowDefinitionRepository,
-                            taskRepository, workflowExecutionRepository, logEntryRepository, onBack = { currentScreen = Screen.Timeline })
+                            taskRepository, workflowExecutionRepository, logEntryRepository, onBack = { currentScreen = Screen.Timeline }, onNavigateToReview = { currentScreen = Screen.WorkflowReview })
+                        Screen.WorkflowReview -> WorkflowReviewScreen(workflowDefinitionRepository as WorkflowDefinitionRepository, workflowExecutionRepository, actionExecutionRepository as ActionExecutionRepository, workflowReviewService, onBack = { currentScreen = Screen.Database })
                     }
                 }
             }

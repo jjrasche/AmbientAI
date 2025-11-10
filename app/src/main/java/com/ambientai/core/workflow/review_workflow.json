@@ -1,0 +1,22 @@
+{
+  "name": "review_workflow",
+  "triggers": ["review this workflow", "analyze workflow"],
+  "steps": [
+    {
+      "action": "workflow.getExecutionData",
+      "input": {
+        "workflowId": "$context.targetWorkflowId",
+        "limit": 100
+      },
+      "output": "executionData"
+    },
+    {
+      "action": "llm.prompt",
+      "input": {
+        "systemPrompt": "You are analyzing workflow execution data to suggest improvements. Return ONLY valid JSON, no markdown fences.",
+        "userPrompt": "Analyze the following workflow execution data and suggest improvements.\n\nWORKFLOW: $executionData.workflow.name\nStatus: $executionData.workflow.enabled\nDefinition:\n$executionData.workflow.definition\n\nREVIEW NOTES:\n$executionData.workflow.reviewNotes\n\nEXECUTION SUMMARY:\n- Total executions: $executionData.summary.totalExecutions\n- Successful: $executionData.summary.successfulExecutions\n- Failed: $executionData.summary.failedExecutions\n- LLM actions: $executionData.summary.llmActions\n- Graded LLM actions: $executionData.summary.gradedLlmActions\n- Average LLM grade: $executionData.summary.avgLlmGrade\n\nRECENT EXECUTIONS:\n$executionData.recentExecutions\n\nFAILED EXECUTIONS:\n$executionData.failedExecutions\n\nFAILED ACTIONS:\n$executionData.failedActions\n\nGRADED ACTIONS:\n$executionData.gradedActions\n\nBased on this data and the review notes, suggest improvements in the following JSON format:\n{\n  \"workflow_refinements\": [\n    {\n      \"type\": \"trigger_add\" | \"trigger_remove\" | \"prompt_update\" | \"tts_update\",\n      \"path\": \"triggers\" | \"steps.N.input.system_prompt\" | \"steps.N.input.text\",\n      \"value\": \"new value for adds/updates\",\n      \"old_value\": \"existing value for updates/removes\",\n      \"rationale\": \"why this change improves the workflow\"\n    }\n  ],\n  \"workflow_expansions\": [\n    {\n      \"name\": \"suggested_workflow_name\",\n      \"triggers\": [\"phrase one\", \"phrase two\"],\n      \"rationale\": \"why this new workflow is needed\"\n    }\n  ],\n  \"llm_grading_insights\": [\n    {\n      \"action_id\": 123,\n      \"suggested_grade\": 4,\n      \"notes\": \"why this grade based on user's grading patterns\"\n    }\n  ]\n}\n\nReturn ONLY the JSON, no additional text or markdown fences."
+      },
+      "output": "suggestions"
+    }
+  ]
+}

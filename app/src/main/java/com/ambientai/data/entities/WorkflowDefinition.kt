@@ -8,5 +8,6 @@ data class WorkflowDefinition(
     @Id var id: Long = 0,
     var name: String,
     var definition: String,
-    var enabled: Boolean = true
+    var enabled: Boolean = true,
+    var reviewNotes: String = "" // Voice annotations from review sessions
 )
