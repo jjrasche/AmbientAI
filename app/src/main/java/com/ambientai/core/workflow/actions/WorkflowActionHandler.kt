@@ -1,8 +1,8 @@
 package com.ambientai.core.workflow.actions
 
-import com.ambientai.data.repositories.ActionExecutionRepository
-import com.ambientai.data.repositories.WorkflowDefinitionRepository
-import com.ambientai.data.repositories.WorkflowExecutionRepository
+import com.ambientai.data.repositories.IActionExecutionRepository
+import com.ambientai.data.repositories.IWorkflowDefinitionRepository
+import com.ambientai.data.repositories.IWorkflowExecutionRepository
 import org.json.JSONArray
 import org.json.JSONObject
 import javax.inject.Inject
@@ -10,9 +10,9 @@ import javax.inject.Singleton
 
 @Singleton
 class WorkflowActionHandler @Inject constructor(
-    private val workflowRepo: WorkflowDefinitionRepository,
-    private val executionRepo: WorkflowExecutionRepository,
-    private val actionRepo: ActionExecutionRepository
+    private val workflowRepo: IWorkflowDefinitionRepository,
+    private val executionRepo: IWorkflowExecutionRepository,
+    private val actionRepo: IActionExecutionRepository
 ) {
     suspend fun execute(action: String, input: JSONObject): JSONObject? = when (action) {
         "workflow.getExecutionData" -> getExecutionData(input)

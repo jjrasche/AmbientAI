@@ -1,18 +1,19 @@
 package com.ambientai
 
 import android.app.Application
-import com.ambientai.data.WorkflowSeeder
-import com.ambientai.data.entities.MyObjectBox
 import dagger.hilt.android.HiltAndroidApp
 import io.objectbox.BoxStore
+import javax.inject.Inject
 
 @HiltAndroidApp
 class AmbientAIApp : Application() {
-    companion object {
-        lateinit var boxStore: BoxStore
-            private set
-    }
+    @Inject
+    lateinit var boxStore: BoxStore
 
-    override fun onCreate() = super.onCreate().also { boxStore = MyObjectBox.builder().androidContext(applicationContext).build() }
-    override fun onTerminate() = boxStore.close().also { super.onTerminate() }
+    override fun onTerminate() {
+        super.onTerminate()
+        if (::boxStore.isInitialized) {
+            boxStore.close()
+        }
+    }
 }

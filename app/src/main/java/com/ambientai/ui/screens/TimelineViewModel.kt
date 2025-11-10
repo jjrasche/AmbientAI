@@ -3,15 +3,14 @@ package com.ambientai.ui.screens
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ambientai.data.entities.Transcript
-import com.ambientai.data.repositories.ActionExecutionRepository
 import com.ambientai.data.repositories.IActionExecutionRepository
-import com.ambientai.data.repositories.TranscriptRepository
+import com.ambientai.data.repositories.ITranscriptRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class TimelineViewModel(
-    private val transcriptRepository: TranscriptRepository,
-    private val actionExecutionRepository: ActionExecutionRepository
+    private val transcriptRepository: ITranscriptRepository,
+    private val actionExecutionRepository: IActionExecutionRepository
 ) : ViewModel() {
     private val _currentTranscript = MutableStateFlow("")
     val currentTranscript: StateFlow<String> = _currentTranscript.asStateFlow()

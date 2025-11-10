@@ -2,7 +2,7 @@ package com.ambientai.core.workflow
 
 import com.ambientai.data.entities.WorkflowDefinition
 import com.ambientai.data.entities.WorkflowExecution
-import com.ambientai.data.repositories.WorkflowDefinitionRepository
+import com.ambientai.data.repositories.IWorkflowDefinitionRepository
 import com.ambientai.workflow.WorkflowExecutor
 import com.ambientai.workflow.WorkflowResult
 import org.json.JSONArray
@@ -13,7 +13,7 @@ import javax.inject.Singleton
 @Singleton
 class WorkflowReviewService @Inject constructor(
     private val workflowExecutor: WorkflowExecutor,
-    private val workflowRepo: WorkflowDefinitionRepository
+    private val workflowRepo: IWorkflowDefinitionRepository
 ) {
     suspend fun generateSuggestions(workflow: WorkflowDefinition, executions: List<WorkflowExecution>): ReviewSuggestions {
         val reviewWorkflow = workflowRepo.getByName("review_workflow") ?: throw IllegalStateException("review_workflow not found in database. Run workflow seeder.")
