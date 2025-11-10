@@ -42,7 +42,7 @@ fun DatabaseScreen(transcriptRepository: TranscriptRepository, actionExecutionRe
     val transcripts by transcriptRepository.getAllTranscripts().collectAsStateWithLifecycle(initialValue = emptyList())
     val llmInteractions by actionExecutionRepository.getLlmInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
     val tasks by taskRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
-    val workflows by workflowDefinitionRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+    val workflows by workflowDefinitionRepository.getAllWorkflows().collectAsStateWithLifecycle(initialValue = emptyList())
     val workflowExecutions by workflowExecutionRepository.getRecentExecutions().collectAsStateWithLifecycle(initialValue = emptyList())
     val logEntries by logEntryRepository.getAllLogs().collectAsStateWithLifecycle(initialValue = emptyList())
     val workflowSeeder = WorkflowSeeder()

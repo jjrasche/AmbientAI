@@ -20,6 +20,7 @@ import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.repositories.ActionExecutionRepository
 import com.ambientai.data.repositories.WorkflowDefinitionRepository
 import com.ambientai.data.repositories.WorkflowExecutionRepository
+import kotlinx.coroutines.flow.flowOf
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
@@ -32,7 +33,8 @@ fun WorkflowReviewScreen(workflowDefinitionRepository: WorkflowDefinitionReposit
     var reviewNotes by remember { mutableStateOf("") }
     var showSuggestions by remember { mutableStateOf(false) }
     val currentWorkflow = workflows.getOrNull(currentWorkflowIndex)
-    val executions = currentWorkflow?.let { workflow -> workflowExecutionRepository.getExecutionsForWorkflow(workflow.id).collectAsStateWithLifecycle(initialValue = emptyList()).value } ?: emptyList()
+    val executionsFlow = remember(currentWorkflow?.id) { currentWorkflow?.let { workflowExecutionRepository.getExecutionsForWorkflow(it.id) } ?: flowOf(emptyList()) }
+    val executions by executionsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
     Column(modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Button(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }; Text(text = "Workflow Review", style = MaterialTheme.typography.headlineMedium); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { IconButton(onClick = { if (currentWorkflowIndex > 0) currentWorkflowIndex-- }, enabled = currentWorkflowIndex > 0) { Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Previous") }; Text(text = "${currentWorkflowIndex + 1} / ${workflows.size}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.align(Alignment.CenterVertically)); IconButton(onClick = { if (currentWorkflowIndex < workflows.size - 1) currentWorkflowIndex++ }, enabled = currentWorkflowIndex < workflows.size - 1) { Icon(Icons.Default.KeyboardArrowRight, contentDescription = "Next") } } }
         Spacer(modifier = Modifier.height(16.dp))
