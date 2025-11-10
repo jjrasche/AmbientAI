@@ -26,7 +26,7 @@ import java.util.*
 
 @Composable
 fun WorkflowReviewScreen(workflowDefinitionRepository: WorkflowDefinitionRepository, workflowExecutionRepository: WorkflowExecutionRepository, actionExecutionRepository: ActionExecutionRepository, reviewService: com.ambientai.core.workflow.WorkflowReviewService, onBack: () -> Unit) {
-    val workflows by workflowDefinitionRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
+    val workflows by workflowDefinitionRepository.getAllWorkflows().collectAsStateWithLifecycle(initialValue = emptyList())
     var currentWorkflowIndex by remember { mutableStateOf(0) }
     var isRecording by remember { mutableStateOf(false) }
     var reviewNotes by remember { mutableStateOf("") }
