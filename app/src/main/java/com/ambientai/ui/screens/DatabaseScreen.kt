@@ -38,7 +38,7 @@ import java.util.*
 private fun String.truncate(maxLength: Int) = if (length > maxLength) take(maxLength) + "..." else this
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DatabaseScreen(transcriptRepository: TranscriptRepository, actionExecutionRepository: ActionExecutionRepository, workflowDefinitionRepository: WorkflowDefinitionRepository, taskRepository: TaskRepository, workflowExecutionRepository: WorkflowExecutionRepository, logEntryRepository: LogEntryRepository, onBack: () -> Unit) {
+fun DatabaseScreen(transcriptRepository: TranscriptRepository, actionExecutionRepository: ActionExecutionRepository, workflowDefinitionRepository: WorkflowDefinitionRepository, taskRepository: TaskRepository, workflowExecutionRepository: WorkflowExecutionRepository, logEntryRepository: LogEntryRepository, onBack: () -> Unit, onNavigateToReview: () -> Unit = {}) {
     val transcripts by transcriptRepository.getAllTranscripts().collectAsStateWithLifecycle(initialValue = emptyList())
     val llmInteractions by actionExecutionRepository.getLlmInteractions().collectAsStateWithLifecycle(initialValue = emptyList())
     val tasks by taskRepository.getAllTasks().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -48,7 +48,7 @@ fun DatabaseScreen(transcriptRepository: TranscriptRepository, actionExecutionRe
     val workflowSeeder = WorkflowSeeder()
     var selectedTab by remember { mutableStateOf(0) }
     Column(modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = "Database", style = MaterialTheme.typography.headlineMedium); Button(onClick = onBack) { Text("Back") } }
+        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = "Database", style = MaterialTheme.typography.headlineMedium); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = onNavigateToReview) { Text("Review Workflows") }; Button(onClick = onBack) { Text("Back") } } }
         ScrollableTabRow(selectedTabIndex = selectedTab) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.combinedClickable(onClick = { selectedTab = 0 })) { Text(text = "Transcripts (${transcripts.size})", modifier = Modifier.padding(16.dp)) }
             Box(contentAlignment = Alignment.Center, modifier = Modifier.combinedClickable(onClick = { selectedTab = 1 })) { Text(text = "LLM (${llmInteractions.size})", modifier = Modifier.padding(16.dp)) }

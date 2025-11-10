@@ -37,4 +37,8 @@ class WorkflowExecutionRepository @Inject constructor(
         val subscription = executionBox.query().order(WorkflowExecution_.timestamp, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }
         awaitClose { subscription.cancel() }
     }
+    override fun getExecutionsForWorkflow(workflowId: Long): Flow<List<WorkflowExecution>> = callbackFlow {
+        val subscription = executionBox.query(WorkflowExecution_.workflowId.equal(workflowId)).order(WorkflowExecution_.timestamp, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }
+        awaitClose { subscription.cancel() }
+    }
 }
