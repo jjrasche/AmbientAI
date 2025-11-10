@@ -130,7 +130,8 @@ class VoiceListeningService : Service() {
         workflowExecutor.loadCompletionTriggers()
     }
     private fun handleWakeWord() = isTtsSpeaking.also { wasSpeaking ->
-        if (wasSpeaking) { ttsService?.stop(); isTtsSpeaking = false } else wakeWordDetector?.stop()
+        if (wasSpeaking) { ttsService?.stop(); isTtsSpeaking = false }
+        wakeWordDetector?.stop()
         updateNotification("Listening...")
         serviceScope.launch { delay(if (wasSpeaking) 100 else 10); speechRecognizer?.start() }
     }
