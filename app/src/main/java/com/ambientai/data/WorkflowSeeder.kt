@@ -9,6 +9,7 @@ class WorkflowSeeder {
         seedTaskWorkflows()
         seedLogWorkflow()
         seedNarrativeWorkflow()
+        seedReviewWorkflow()
 
         repo.save(WorkflowDefinition(
             name = "web_search",
@@ -165,6 +166,33 @@ class WorkflowSeeder {
         "text":"${'$'}narrative.response",
         "stateSnapshot":"${'$'}state"
       }
+    }
+  ]
+}""".trimIndent()
+        ))
+    }
+    private fun seedReviewWorkflow() {
+        repo.save(WorkflowDefinition(
+            name = "review_workflow",
+            enabled = false,
+            definition = """{
+  "triggers":[],
+  "steps":[
+    {
+      "action":"workflow.getExecutionData",
+      "input":{
+        "workflowId":"${'$'}context.targetWorkflowId",
+        "limit":100
+      },
+      "output":"executionData"
+    },
+    {
+      "action":"llm.prompt",
+      "input":{
+        "systemPrompt":"You are analyzing workflow execution data to suggest improvements. Return ONLY valid JSON, no markdown fences.",
+        "userPrompt":"Analyze workflow execution data and suggest improvements.\n\nWORKFLOW: ${'$'}executionData.workflow.name\nStatus: ${'$'}executionData.workflow.enabled\n\nREVIEW NOTES:\n${'$'}executionData.workflow.reviewNotes\n\nEXECUTION SUMMARY:\n- Total: ${'$'}executionData.summary.totalExecutions\n- Successful: ${'$'}executionData.summary.successfulExecutions\n- Failed: ${'$'}executionData.summary.failedExecutions\n- LLM actions: ${'$'}executionData.summary.llmActions\n- Graded: ${'$'}executionData.summary.gradedLlmActions\n- Avg grade: ${'$'}executionData.summary.avgLlmGrade\n\nRECENT EXECUTIONS:\n${'$'}executionData.recentExecutions\n\nFAILED EXECUTIONS:\n${'$'}executionData.failedExecutions\n\nFAILED ACTIONS:\n${'$'}executionData.failedActions\n\nGRADED ACTIONS:\n${'$'}executionData.gradedActions\n\nReturn JSON:\n{\n  \"workflow_refinements\": [{\"type\": \"trigger_add|trigger_remove|prompt_update|tts_update\", \"path\": \"path\", \"value\": \"new\", \"old_value\": \"old\", \"rationale\": \"why\"}],\n  \"workflow_expansions\": [{\"name\": \"name\", \"triggers\": [\"phrases\"], \"rationale\": \"why\"}],\n  \"llm_grading_insights\": [{\"action_id\": 123, \"suggested_grade\": 4, \"notes\": \"why\"}]\n}"
+      },
+      "output":"suggestions"
     }
   ]
 }""".trimIndent()

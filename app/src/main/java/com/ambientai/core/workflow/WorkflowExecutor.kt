@@ -5,6 +5,7 @@ import com.ambientai.core.log.LogManager
 import com.ambientai.core.search.SearchService
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.tts.TextToSpeechService
+import com.ambientai.core.workflow.actions.WorkflowActionHandler
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.entities.ActionExecution
 import com.ambientai.data.repositories.IWorkflowDefinitionRepository
@@ -24,7 +25,8 @@ class WorkflowExecutor @Inject constructor(
     private val tasks: TaskManager,
     private val llm: GroqLlmService,
     private val search: SearchService,
-    private val logs: LogManager
+    private val logs: LogManager,
+    private val workflowActions: WorkflowActionHandler
 ) {
     private var completionTriggers = mapOf<String, List<Long>>()
 
@@ -52,7 +54,7 @@ class WorkflowExecutor @Inject constructor(
         val startTime = System.currentTimeMillis()
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
-            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
+            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = System.currentTimeMillis()))
         }.onFailure { e ->
