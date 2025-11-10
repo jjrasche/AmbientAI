@@ -5,11 +5,15 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.ambientai.R
 import com.ambientai.core.stt.SpeechRecognizer
@@ -39,6 +43,7 @@ class VoiceListeningService : Service() {
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
 
     companion object {
+        private const val TAG = "VoiceService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
         const val ACTION_PAUSE_DETECTION = "com.ambientai.PAUSE_DETECTION"
@@ -130,16 +135,40 @@ class VoiceListeningService : Service() {
         workflowExecutor.loadCompletionTriggers()
     }
     private fun handleWakeWord() = isTtsSpeaking.also { wasSpeaking ->
-        if (wasSpeaking) { ttsService?.stop(); isTtsSpeaking = false }
+        Log.d(TAG, "⚡ WAKE WORD DETECTED")
+        if (wasSpeaking) { Log.d(TAG, "⏹ Interrupting TTS"); ttsService?.stop(); isTtsSpeaking = false }
         wakeWordDetector?.stop()
         updateNotification("Listening...")
+        val isBluetoothConnected = isBluetoothAudioConnected()
+        Log.d(TAG, "🎧 Bluetooth audio: ${if (isBluetoothConnected) "CONNECTED" else "NOT CONNECTED"}")
         serviceScope.launch {
-            launch { speak("yes") }
-            speechRecognizer?.start()
+            if (isBluetoothConnected) {
+                Log.d(TAG, "→ Bluetooth mode: Running TTS and STT in parallel")
+                launch { speak("yes") }
+                speechRecognizer?.start()
+            } else {
+                Log.d(TAG, "→ Phone mode: Waiting for TTS to complete before starting STT")
+                speak("yes")
+                delay(100)
+                speechRecognizer?.start()
+            }
+        }
+    }
+    private fun isBluetoothAudioConnected(): Boolean {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.availableCommunicationDevices.any { device ->
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            }
+        } else {
+            audioManager.isBluetoothScoOn || audioManager.isBluetoothA2dpOn
         }
     }
     private fun handlePartialTranscript(text: String) = listeners.forEach { it.onPartialTranscript(text) }
     private fun handleTranscript(text: String) {
+        Log.d(TAG, "📝 TRANSCRIPT: \"$text\"")
         Transcript(text = text, audioFilePath = "", timestamp = System.currentTimeMillis(), excludeFromContext = false).also {
             transcriptRepository.save(it)
             listeners.forEach { listener -> listener.onTranscriptSaved(it) }
@@ -149,22 +178,27 @@ class VoiceListeningService : Service() {
     private suspend fun speak(text: String) { isTtsSpeaking = true; ttsService?.speak(text); isTtsSpeaking = false }
     private fun routeToWorkflow(text: String, transcriptId: Long) = serviceScope.launch {
         try {
+            Log.d(TAG, "🔀 ROUTING: \"$text\"")
             updateNotification("Processing...")
             wakeWordDetector?.start()
             val match = workflowRouter.route(text, transcriptId)
             if (match == null) {
+                Log.w(TAG, "⚠ NO WORKFLOW MATCH")
                 speak("No workflow matched.")
             } else {
+                Log.d(TAG, "✓ MATCHED WORKFLOW: ${match.definition.name}")
                 when (workflowExecutor.execute(match)) {
-                    is WorkflowResult.Failure -> speak("Workflow failed: ${(workflowExecutor.execute(match) as? WorkflowResult.Failure)?.error}")
-                    null -> speak("System error.")
-                    else -> {}
+                    is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${(workflowExecutor.execute(match) as? WorkflowResult.Failure)?.error}"); speak("Workflow failed: ${(workflowExecutor.execute(match) as? WorkflowResult.Failure)?.error}") }
+                    null -> { Log.e(TAG, "✖ WORKFLOW ERROR: null result"); speak("System error.") }
+                    else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
                 }
             }
             updateNotification("Listening for wake word...")
         } catch (e: MultipleMatchException) {
+            Log.w(TAG, "⚠ MULTIPLE MATCHES: ${e.message}")
             wakeWordDetector?.start(); speak("Multiple workflows matched. Please be more specific."); updateNotification("Listening for wake word...")
         } catch (e: Exception) {
+            Log.e(TAG, "✖ WORKFLOW EXCEPTION: ${e.message}", e)
             wakeWordDetector?.start(); speak("Sorry, something went wrong."); updateNotification("Listening for wake word...")
         }
     }

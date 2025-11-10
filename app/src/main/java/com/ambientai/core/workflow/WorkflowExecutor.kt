@@ -1,5 +1,6 @@
 package com.ambientai.workflow
 
+import android.util.Log
 import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.log.LogManager
 import com.ambientai.core.search.SearchService
@@ -30,21 +31,25 @@ class WorkflowExecutor @Inject constructor(
     private val time: TimeManager,
     private val workflowActions: WorkflowActionHandler
 ) {
+    companion object { private const val TAG = "WorkflowExecutor" }
     private var completionTriggers = mapOf<String, List<Long>>()
 
     fun loadCompletionTriggers() { completionTriggers = workflowRepo.getEnabled().flatMap { workflow -> runCatching { JSONObject(workflow.definition).optJSONObject("triggers")?.optJSONArray("onWorkflowComplete")?.let { onComplete -> (0 until onComplete.length()).map { onComplete.getString(it) to workflow.id } } ?: emptyList() }.getOrElse { emptyList() } }.groupBy({ it.first }, { it.second }) }
     private suspend fun triggerCompletionWorkflows(completedWorkflowName: String, originalContext: WorkflowExecutionContext) = completionTriggers[completedWorkflowName]?.forEach { workflowId -> runCatching { executeById(workflowId, originalContext.variables) } }
     suspend fun executeById(workflowId: Long, contextOverride: Map<String, Any> = emptyMap()): WorkflowResult = workflowRepo.getById(workflowId)?.let { definition -> WorkflowExecutionContext(workflowId = workflowId, workflowName = definition.name, transcript = "", matchedTrigger = "(programmatic)").also { it.variables.putAll(contextOverride) }.let { execute(WorkflowMatch(definition, it)) } } ?: WorkflowResult.Failure("Workflow $workflowId not found")
     suspend fun execute(match: WorkflowMatch): WorkflowResult = withContext(Dispatchers.IO) {
+        Log.d(TAG, "⚙ EXECUTING WORKFLOW: ${match.definition.name}")
         val startTime = System.currentTimeMillis()
         val executionLog = WorkflowExecution(workflowId = match.definition.id, workflowName = match.definition.name, transcript = match.context.transcript, matchedTrigger = match.context.matchedTrigger, success = false, executionTimeMs = 0, timestamp = startTime).also { executionRepo.save(it) }
         runCatching {
             JSONObject(match.definition.definition).getJSONArray("steps").let { steps -> (0 until steps.length()).forEach { i -> executeStep(steps.getJSONObject(i), match.context, executionLog.id, i, "$i") } }
             executionLog.apply { success = true; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }
+            Log.d(TAG, "✓ WORKFLOW SUCCESS: ${match.definition.name} (${System.currentTimeMillis() - startTime}ms)")
             triggerCompletionWorkflows(match.definition.name, match.context)
             WorkflowResult.Success(match.context.variables)
         }.getOrElse { e ->
             executionLog.apply { success = false; errorMessage = e.message; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }
+            Log.e(TAG, "✖ WORKFLOW FAILED: ${match.definition.name} - ${e.message}", e)
             WorkflowResult.Failure(e.message ?: "Unknown error")
         }
     }
@@ -54,13 +59,16 @@ class WorkflowExecutor @Inject constructor(
         val inputJson = step.getJSONObject("input")
         val outputVar = step.optString("output", null)
         val startTime = System.currentTimeMillis()
+        Log.d(TAG, "  ↳ ACTION: $actionName")
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
             val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = System.currentTimeMillis()))
+            Log.d(TAG, "    ✓ ACTION SUCCESS: $actionName (${System.currentTimeMillis() - startTime}ms)")
         }.onFailure { e ->
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = inputJson.toString(), outputJson = "", success = false, errorMessage = e.message, latencyMs = System.currentTimeMillis() - startTime, timestamp = System.currentTimeMillis()))
+            Log.e(TAG, "    ✖ ACTION FAILED: $actionName - ${e.message}", e)
             throw e
         }
     }
@@ -69,7 +77,8 @@ class WorkflowExecutor @Inject constructor(
     private fun resolveValue(value: Any, context: WorkflowExecutionContext): Any = when (value) { is String -> resolveString(value, context); is JSONObject -> resolveVariables(value, context); is JSONArray -> resolveArray(value, context); else -> value }
     private fun resolveArray(array: JSONArray, context: WorkflowExecutionContext) = JSONArray().apply { (0 until array.length()).forEach { put(resolveValue(array.get(it), context)) } }
     private fun resolveString(str: String, context: WorkflowExecutionContext): Any = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""").findAll(str).toList().let { matches -> when { matches.isEmpty() -> str; matches.size == 1 && matches[0].value == str -> resolveVariablePath(matches[0].groupValues[1], context); else -> matches.fold(str) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).toString()) } } }
-    private fun resolveVariablePath(path: String, context: WorkflowExecutionContext): Any = path.split(".").drop(1).fold(context.variables[path.split(".")[0]] as Any? ?: throw MissingVariableException(path.split(".")[0])) { current, part -> when (current) { is JSONObject -> if (current.has(part)) current.get(part) else throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is Map<*, *> -> current[part] ?: throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is List<*> -> current.getOrNull(part.toIntOrNull() ?: throw IllegalArgumentException("Invalid list index: $part")) ?: throw MissingVariableException("${path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")} (index out of bounds)"); else -> throw IllegalArgumentException("Cannot access property '$part' on ${current::class.simpleName}") } }
+    private fun resolveVariablePath(path: String, context: WorkflowExecutionContext): Any = path.split(".").drop(1).fold(context.variables[path.split(".")[0]] as Any? ?: throw MissingVariableException(path.split(".")[0])) { current, part -> when (current) { is JSONObject -> if (current.has(part)) current.get(part) else throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is Map<*, *> -> current[part] ?: throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is List<*> -> current.getOrNull(part.toIntOrNull() ?: throw IllegalArgumentException("Invalid list index: $part")) ?: throw MissingVariableException("${path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")} (index out of bounds)"); is String -> if (part == "length") current.length else tryParseJsonAndAccess(current, part, path); else -> throw IllegalArgumentException("Cannot access property '$part' on ${current::class.simpleName}") } }
+    private fun tryParseJsonAndAccess(jsonString: String, property: String, fullPath: String): Any = runCatching { JSONObject(jsonString.trim()).let { if (it.has(property)) it.get(property) else throw MissingVariableException(fullPath) } }.getOrElse { Log.e(TAG, "Failed to parse JSON string for path $fullPath. String value: \"$jsonString\"", it); throw IllegalArgumentException("Cannot access property '$property' on String (not valid JSON). Value: \"${jsonString.take(100)}${if (jsonString.length > 100) "..." else ""}\"") }
     class MissingVariableException(varName: String) : Exception("Variable not found: \$$varName")
     private fun evaluateCondition(condition: String, context: WorkflowExecutionContext) = evaluateExpression(resolveVariablesInCondition(condition, context))
     private fun resolveVariablesInCondition(condition: String, context: WorkflowExecutionContext): String = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""").findAll(condition).fold(condition) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).let { value -> when (value) { null -> "null"; is String -> "\"${value.replace("\"", "\\\"")}\""; is Boolean -> value.toString(); is Number -> value.toString(); else -> "\"$value\"" } }) }

@@ -219,7 +219,7 @@ class WorkflowSeeder @Inject constructor(
             name = "set_timer",
             enabled = true,
             definition = """{
-  "triggers":["set a timer","set timer","timer for","start a timer"],
+  "triggers":["set a timer","set timer","set alarm","set an alarm","timer for","start a timer"],
   "steps":[
     {"action":"llm.prompt","input":{
       "systemPrompt":"Extract the timer duration from the user's input. Return ONLY valid JSON with no markdown fences. Format: {\"minutes\": <number>, \"seconds\": <number>}. If they say '5 minutes', return {\"minutes\": 5, \"seconds\": 0}. If they say '30 seconds', return {\"minutes\": 0, \"seconds\": 30}.",

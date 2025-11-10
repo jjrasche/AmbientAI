@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.SystemClock
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.json.JSONObject
@@ -43,6 +44,12 @@ class TimeManager @Inject constructor(@ApplicationContext private val context: C
         val seconds = input.optInt("seconds", 0)
         val totalSeconds = minutes * 60 + seconds
         if (totalSeconds <= 0) throw IllegalArgumentException("Timer duration must be positive")
+
+        // Check if we can schedule exact alarms on Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            throw SecurityException("SCHEDULE_EXACT_ALARM permission not granted. Please enable 'Alarms & reminders' permission in app settings.")
+        }
+
         val triggerAtMillis = SystemClock.elapsedRealtime() + (totalSeconds * 1000L)
         val intent = Intent(context, TimerReceiver::class.java).apply { putExtra("duration", totalSeconds) }
         val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
