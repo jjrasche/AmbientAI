@@ -15,6 +15,7 @@ class WorkflowSeeder @Inject constructor(
         seedNarrativeWorkflow()
         seedReviewWorkflow()
         seedTimeWorkflows()
+        seedMusicWorkflows()
 
         repo.save(WorkflowDefinition(
             name = "web_search",
@@ -232,6 +233,92 @@ class WorkflowSeeder @Inject constructor(
       "seconds":"${'$'}duration.response.seconds"
     },"output":"timer"},
     {"action":"tts.speak","input":{"text":"Timer set for ${'$'}timer.message"}}
+  ]
+}""".trimIndent()
+        ))
+    }
+    private fun seedMusicWorkflows() {
+        repo.save(WorkflowDefinition(
+            name = "play_music",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["play"],
+    "conditions": {}
+  },
+  "steps": [
+    {"action": "music.play", "input": {"query": "${'$'}transcript"}, "output": "result"},
+    {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "pause_music",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["pause", "pause music", "stop music"],
+    "conditions": {"playbackActive": true}
+  },
+  "steps": [
+    {"action": "music.pause", "output": "result"},
+    {"action": "tts.speak", "input": {"text": "Music paused"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "resume_music",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["resume", "resume music", "continue", "keep playing"],
+    "conditions": {"playbackActive": false}
+  },
+  "steps": [
+    {"action": "music.resume", "output": "result"},
+    {"action": "tts.speak", "input": {"text": "Resuming music"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "next_song",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["next", "next song", "skip", "skip song"],
+    "conditions": {"playbackActive": true}
+  },
+  "steps": [
+    {"action": "music.next", "output": "result"},
+    {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "previous_song",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["previous", "previous song", "go back", "last song"],
+    "conditions": {"playbackActive": true}
+  },
+  "steps": [
+    {"action": "music.previous", "output": "result"},
+    {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "whats_playing",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["what's playing", "what song is this", "what's this song", "current song"],
+    "conditions": {}
+  },
+  "steps": [
+    {"action": "music.getNowPlaying", "output": "result"},
+    {"action": "tts.speak", "input": {"text": "${'$'}result.response"}}
   ]
 }""".trimIndent()
         ))

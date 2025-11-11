@@ -49,4 +49,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindNarrativeRepository(impl: NarrativeRepository): INarrativeRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMediaHistoryRepository(impl: MediaHistoryRepository): IMediaHistoryRepository
 }
