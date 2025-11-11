@@ -9,6 +9,7 @@ import com.ambientai.core.search.SearchService
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.time.TimeManager
 import com.ambientai.core.tts.TextToSpeechService
+import com.ambientai.core.ui.UiService
 import com.ambientai.core.workflow.actions.WorkflowActionHandler
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.entities.ActionExecution
@@ -33,7 +34,8 @@ class WorkflowExecutor @Inject constructor(
     private val time: TimeManager,
     private val workflowActions: WorkflowActionHandler,
     private val musicPlayer: MusicPlayerService,
-    private val musicScanner: MusicScanner
+    private val musicScanner: MusicScanner,
+    private val ui: UiService
 ) {
     companion object { private const val TAG = "WorkflowExecutor" }
     private var completionTriggers = mapOf<String, List<Long>>()
@@ -60,13 +62,13 @@ class WorkflowExecutor @Inject constructor(
     private suspend fun executeStep(step: JSONObject, context: WorkflowExecutionContext, executionId: Long, stepIndex: Int, stepPath: String) = when (step.getString("action")) { "control.if" -> executeConditional(step, context, executionId, stepIndex, stepPath); else -> executeAction(step, context, executionId, stepIndex, stepPath) }
     private suspend fun executeAction(step: JSONObject, context: WorkflowExecutionContext, executionId: Long, stepIndex: Int, stepPath: String) {
         val actionName = step.getString("action")
-        val inputJson = step.getJSONObject("input")
+        val inputJson = step.optJSONObject("input") ?: JSONObject()
         val outputVar = step.optString("output", null)
         val startTime = System.currentTimeMillis()
         Log.d(TAG, "  ↳ ACTION: $actionName")
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
-            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "music" -> if (actionName == "music.scan" || actionName == "music.search") musicScanner.execute(actionName, resolvedInput) else musicPlayer.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
+            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "music" -> if (actionName == "music.scan" || actionName == "music.search" || actionName == "music.listAll") musicScanner.execute(actionName, resolvedInput) else musicPlayer.execute(actionName, resolvedInput); "ui" -> ui.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = System.currentTimeMillis()))
             Log.d(TAG, "    ✓ ACTION SUCCESS: $actionName (${System.currentTimeMillis() - startTime}ms)")
@@ -90,7 +92,25 @@ class WorkflowExecutor @Inject constructor(
     private fun evaluateOr(expr: String) = splitByOperator(expr, "||").let { parts -> if (parts.size == 1) evaluateAnd(parts[0]) else parts.any { evaluateAnd(it) } }
     private fun evaluateAnd(expr: String) = splitByOperator(expr, "&&").let { parts -> if (parts.size == 1) evaluateComparison(parts[0]) else parts.all { evaluateComparison(it) } }
     private fun evaluateComparison(expr: String): Boolean = expr.trim().let { trimmed -> when { trimmed.startsWith("!") -> !evaluateComparison(trimmed.substring(1)); else -> listOf("===", "!==", "==", "!=", ">=", "<=", ">", "<").firstNotNullOfOrNull { op -> splitByOperator(trimmed, op, limit = 2).takeIf { it.size == 2 }?.let { parts -> compare(parseValue(parts[0].trim()), parseValue(parts[1].trim()), op) } } ?: (parseValue(trimmed) as? Boolean ?: throw IllegalArgumentException("Invalid boolean expression: $trimmed")) } }
-    private fun splitByOperator(expr: String, operator: String, limit: Int = 0): List<String> = expr.foldIndexed(Triple(mutableListOf<String>(), StringBuilder(), false)) { i, (parts, current, inQuotes), char -> when { char == '"' && (i == 0 || expr[i-1] != '\\') -> Triple(parts, current.append(char), !inQuotes); !inQuotes && expr.substring(i).startsWith(operator) -> if (limit > 0 && parts.size >= limit - 1) Triple(parts, current.append(expr.substring(i)), inQuotes) else Triple(parts.apply { add(current.toString()) }, StringBuilder(), inQuotes).also { return@foldIndexed it.copy(first = it.first, second = it.second) }; else -> Triple(parts, current.append(char), inQuotes) } }.let { (parts, current, _) -> parts.apply { add(current.toString()) }.takeIf { it.size > 1 } ?: listOf(expr) }
+    private fun splitByOperator(expr: String, operator: String, limit: Int = 0): List<String> {
+        val parts = mutableListOf<String>()
+        val current = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < expr.length) {
+            val char = expr[i]
+            when {
+                char == '"' && (i == 0 || expr[i-1] != '\\') -> { current.append(char); inQuotes = !inQuotes; i++ }
+                !inQuotes && expr.substring(i).startsWith(operator) -> {
+                    if (limit > 0 && parts.size >= limit - 1) { current.append(expr.substring(i)); break }
+                    else { parts.add(current.toString()); current.clear(); i += operator.length }
+                }
+                else -> { current.append(char); i++ }
+            }
+        }
+        parts.add(current.toString())
+        return parts.takeIf { it.size > 1 } ?: listOf(expr)
+    }
     private fun parseValue(str: String) = str.trim().let { trimmed -> when { trimmed == "null" -> null; trimmed == "true" -> true; trimmed == "false" -> false; trimmed.startsWith("\"") && trimmed.endsWith("\"") -> trimmed.substring(1, trimmed.length - 1).replace("\\\"", "\""); trimmed.toIntOrNull() != null -> trimmed.toInt(); trimmed.toDoubleOrNull() != null -> trimmed.toDouble(); else -> throw IllegalArgumentException("Cannot parse value: $trimmed") } }
     private fun compare(left: Any?, right: Any?, operator: String): Boolean = when (operator) { "===" -> left === right || (left == null && right == null) || left == right; "!==" -> !(left === right || (left == null && right == null) || left == right); "==" -> left == right; "!=" -> left != right; ">", "<", ">=", "<=" -> { val leftNum = (left as? Number)?.toDouble() ?: throw IllegalArgumentException("Cannot compare non-numeric value: $left"); val rightNum = (right as? Number)?.toDouble() ?: throw IllegalArgumentException("Cannot compare non-numeric value: $right"); when (operator) { ">" -> leftNum > rightNum; "<" -> leftNum < rightNum; ">=" -> leftNum >= rightNum; "<=" -> leftNum <= rightNum; else -> false } }; else -> throw IllegalArgumentException("Unknown operator: $operator") }
 }

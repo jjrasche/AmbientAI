@@ -18,7 +18,7 @@ class MusicScanner @Inject constructor(@ApplicationContext private val context: 
     private var isScanned = false
 
     companion object { private const val TAG = "MusicScanner" }
-    fun execute(actionName: String, input: JSONObject) = when (actionName) { "music.scan" -> scan(input); "music.search" -> search(input); else -> errorResult("Unknown action: $actionName") }
+    fun execute(actionName: String, input: JSONObject) = when (actionName) { "music.scan" -> scan(input); "music.search" -> search(input); "music.listAll" -> listAll(input); else -> errorResult("Unknown action: $actionName") }
     private fun successResult(data: Map<String, Any?> = emptyMap()) = JSONObject().apply { put("success", true); data.forEach { (k, v) -> put(k, v) } }
     private fun errorResult(message: String) = JSONObject().apply { put("success", false); put("error", message) }
     fun getSongs(): List<Song> { if (!isScanned) scanLibrary(); return songs }
@@ -33,13 +33,21 @@ class MusicScanner @Inject constructor(@ApplicationContext private val context: 
         val matches = findMatches(query)
         return successResult(mapOf("matches" to matches.size, "songs" to matches.map { mapOf("title" to it.title, "artist" to it.artist, "album" to it.album) }))
     }
+    private fun listAll(input: JSONObject): JSONObject {
+        if (!isScanned) scanLibrary()
+        val songList = songs.joinToString("\n\n") { "${it.artist} - ${it.title}\nAlbum: ${it.album}" }
+        val summary = "Found ${songs.size} songs"
+        return successResult(mapOf("totalSongs" to songs.size, "songList" to songList, "summary" to summary))
+    }
     private fun scanLibrary(): Int {
         Log.d(TAG, "▶ SCANNING MUSIC LIBRARY")
         if (!hasPermission()) { Log.e(TAG, "✖ Missing storage permission"); return 0 }
         songs.clear()
+        val musicDirectory = "/storage/emulated/0/Documents/Second Brain/Second Brain/resource/attachements/music"
         val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.TRACK)
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-        context.contentResolver.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, selection, null, "${MediaStore.Audio.Media.ARTIST} ASC, ${MediaStore.Audio.Media.ALBUM} ASC, ${MediaStore.Audio.Media.TRACK} ASC")?.use { cursor ->
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DATA} LIKE ?"
+        val selectionArgs = arrayOf("$musicDirectory%")
+        context.contentResolver.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, "${MediaStore.Audio.Media.ARTIST} ASC, ${MediaStore.Audio.Media.ALBUM} ASC, ${MediaStore.Audio.Media.TRACK} ASC")?.use { cursor ->
             val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
             val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)

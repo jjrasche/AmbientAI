@@ -22,6 +22,7 @@ class WorkflowSeeder @Inject constructor(
             enabled = true,
             definition = """{
   "triggers":["search for","look up"],
+  "requiresInput": true,
   "steps":[
     {"action":"llm.prompt","input":{
       "systemPrompt":"Extract the search query from the user's input. Return ONLY the search query, nothing else. Remove phrases like 'search for', 'look up', etc.",
@@ -49,6 +50,7 @@ class WorkflowSeeder @Inject constructor(
             enabled = true,
             definition = """{
   "triggers":["remember this","remember that","don't forget"],
+  "requiresInput": true,
   "steps":[
     {"action":"llm.prompt","input":{
       "systemPrompt":"Extract what the user wants to remember. Return JSON: {\"memory\": \"what they want remembered\"}",
@@ -70,6 +72,7 @@ class WorkflowSeeder @Inject constructor(
         val llmPullNameFromTranscriptAction = """{"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},"""
         repo.save(WorkflowDefinition(name = "start_task", enabled = true, definition = """{
   "triggers":["start task","working on","begin task"],
+  "requiresInput": true,
   "steps":[
     $llmPullNameFromTranscriptAction
     {"action":"task.start","input":{"name":"${'$'}taskName.response"},"output":"task"},
@@ -99,6 +102,7 @@ class WorkflowSeeder @Inject constructor(
 }""".trimIndent()))
         repo.save(WorkflowDefinition(name = "switch_task", enabled = true, definition = """{
   "triggers":["switch to","switch task","now working on","back to"],
+  "requiresInput": true,
   "steps":[
     {"action":"task.getNonCompleted","output":"available"},
     {"action":"control.if","condition":"${'$'}available.tasks.length === 0","then":[
@@ -125,6 +129,7 @@ class WorkflowSeeder @Inject constructor(
     private fun seedLogWorkflow() {
         repo.save(WorkflowDefinition(name = "log_entry", enabled = true, definition = """{
   "triggers":["log this"],
+  "requiresInput": true,
   "steps":[
     {"action":"llm.prompt","input":{
       "systemPrompt":"Classify what's being logged and extract data.\n\nValid types: medication, food, supplement, activity, symptom, unknown\n\nReturn JSON:\n{\n  \"type\": \"<one of the valid types>\",\n  \"data\": {\n    // For medication: {\"name\": \"string\", \"dosage\": \"string\"}\n    // For food: {\"name\": \"string\", \"quantity\": \"string\", \"meal\": \"string\"}\n    // For supplement: {\"name\": \"string\", \"amount\": \"string\"}\n    // For activity: {\"name\": \"string\", \"duration\": \"string\"}\n    // For symptom: {\"name\": \"string\", \"severity\": \"string\"}\n    // Extract whatever fields make sense for the type\n  }\n}\n\nIf unclear, use type: \"unknown\" and capture what you can.",
@@ -221,6 +226,7 @@ class WorkflowSeeder @Inject constructor(
             enabled = true,
             definition = """{
   "triggers":["set a timer","set timer","set alarm","set an alarm","timer for","start a timer"],
+  "requiresInput": true,
   "steps":[
     {"action":"llm.prompt","input":{
       "systemPrompt":"Extract the timer duration from the user's input. Return ONLY valid JSON with no markdown fences. Format: {\"minutes\": <number>, \"seconds\": <number>}. If they say '5 minutes', return {\"minutes\": 5, \"seconds\": 0}. If they say '30 seconds', return {\"minutes\": 0, \"seconds\": 30}.",
@@ -246,9 +252,14 @@ class WorkflowSeeder @Inject constructor(
     "keywords": ["play"],
     "conditions": {}
   },
+  "requiresInput": true,
   "steps": [
     {"action": "music.play", "input": {"query": "${'$'}transcript"}, "output": "result"},
-    {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
+      {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+    ], "else": [
+      {"action": "tts.speak", "input": {"text": "${'$'}result.error"}}
+    ]}
   ]
 }""".trimIndent()
         ))
@@ -290,7 +301,11 @@ class WorkflowSeeder @Inject constructor(
   },
   "steps": [
     {"action": "music.next", "output": "result"},
-    {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
+      {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+    ], "else": [
+      {"action": "tts.speak", "input": {"text": "${'$'}result.error"}}
+    ]}
   ]
 }""".trimIndent()
         ))
@@ -304,7 +319,11 @@ class WorkflowSeeder @Inject constructor(
   },
   "steps": [
     {"action": "music.previous", "output": "result"},
-    {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
+      {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
+    ], "else": [
+      {"action": "tts.speak", "input": {"text": "${'$'}result.error"}}
+    ]}
   ]
 }""".trimIndent()
         ))
@@ -319,6 +338,22 @@ class WorkflowSeeder @Inject constructor(
   "steps": [
     {"action": "music.getNowPlaying", "output": "result"},
     {"action": "tts.speak", "input": {"text": "${'$'}result.response"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "list_all_songs",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["list all songs", "show all music", "list music library", "debug music"],
+    "conditions": {}
+  },
+  "requiresInput": false,
+  "steps": [
+    {"action": "music.listAll", "output": "result"},
+    {"action": "ui.showModal", "input": {"title": "Music Library (${'$'}result.totalSongs songs)", "message": "${'$'}result.songList"}},
+    {"action": "tts.speak", "input": {"text": "${'$'}result.summary"}}
   ]
 }""".trimIndent()
         ))

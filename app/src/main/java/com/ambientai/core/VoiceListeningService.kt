@@ -41,6 +41,7 @@ class VoiceListeningService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
+    private var pendingQuickStartWorkflowId: Long? = null
 
     companion object {
         private const val TAG = "VoiceService"
@@ -172,7 +173,7 @@ class VoiceListeningService : Service() {
         Transcript(text = text, audioFilePath = "", timestamp = System.currentTimeMillis(), excludeFromContext = false).also {
             transcriptRepository.save(it)
             listeners.forEach { listener -> listener.onTranscriptSaved(it) }
-            routeToWorkflow(text, it.id)
+            pendingQuickStartWorkflowId?.let { workflowId -> pendingQuickStartWorkflowId = null; executeWorkflowDirectly(workflowId, it.id) } ?: routeToWorkflow(text, it.id)
         }
     }
     private suspend fun speak(text: String) { isTtsSpeaking = true; ttsService?.speak(text); isTtsSpeaking = false }
@@ -202,6 +203,27 @@ class VoiceListeningService : Service() {
             wakeWordDetector?.start(); speak("Sorry, something went wrong."); updateNotification("Listening for wake word...")
         }
     }
-    private fun handleSttError(errorCode: Int) = updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)").also { if (isDetecting) wakeWordDetector?.start() }
+    private fun handleSttError(errorCode: Int) = updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)").also { if (isDetecting) wakeWordDetector?.start(); pendingQuickStartWorkflowId = null }
     private fun handleTtsError(errorCode: Int) = Unit
+    fun startQuickStartRecording(workflowId: Long) { pendingQuickStartWorkflowId = workflowId; wakeWordDetector?.stop(); updateNotification("Quick Start: Listening..."); speechRecognizer?.start() }
+    fun cancelQuickStart() { pendingQuickStartWorkflowId = null; speechRecognizer?.stop(); if (isDetecting) wakeWordDetector?.start(); updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)") }
+    fun executeWorkflowDirectly(workflowId: Long, transcriptId: Long) = serviceScope.launch {
+        try {
+            Log.d(TAG, "🎯 DIRECT EXECUTION: workflowId=$workflowId, transcriptId=$transcriptId")
+            updateNotification("Executing workflow...")
+            val transcript = if (transcriptId > 0) transcriptRepository.getById(transcriptId) else null
+            val contextOverride = mutableMapOf<String, Any>("transcript" to (transcript?.text ?: ""), "transcriptId" to transcriptId)
+            when (val result = workflowExecutor.executeById(workflowId, contextOverride)) {
+                is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); speak("Workflow failed: ${result.error}") }
+                else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
+            }
+            updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)")
+            if (isDetecting) wakeWordDetector?.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "✖ DIRECT EXECUTION EXCEPTION: ${e.message}", e)
+            speak("Sorry, something went wrong.")
+            updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)")
+            if (isDetecting) wakeWordDetector?.start()
+        }
+    }
 }

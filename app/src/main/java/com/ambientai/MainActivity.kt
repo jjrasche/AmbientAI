@@ -21,8 +21,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.ambientai.core.VoiceListeningService
+import com.ambientai.core.ui.UiService
 import com.ambientai.data.entities.Transcript
+import com.ambientai.data.entities.WorkflowDefinition
 import com.ambientai.data.repositories.*
+import com.ambientai.ui.components.InfoModal
+import com.ambientai.ui.components.QuickStartWorkflowDialog
 import com.ambientai.ui.screens.DatabaseScreen
 import com.ambientai.ui.screens.TimelineScreen
 import com.ambientai.ui.screens.WorkflowReviewScreen
@@ -39,10 +43,13 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var workflowExecutionRepository: IWorkflowExecutionRepository
     @Inject lateinit var logEntryRepository: ILogEntryRepository
     @Inject lateinit var workflowReviewService: com.ambientai.core.workflow.WorkflowReviewService
+    @Inject lateinit var uiService: UiService
     private var voiceService: VoiceListeningService? = null
     private var isBound = false
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
     private var currentTranscript by mutableStateOf("")
+    private var quickStartWorkflow by mutableStateOf<WorkflowDefinition?>(null)
+    private var isQuickStartListening by mutableStateOf(false)
 
     sealed class Screen {
         object Timeline : Screen()
@@ -57,7 +64,7 @@ class MainActivity : ComponentActivity() {
     }
     private val transcriptListener = object : VoiceListeningService.TranscriptUpdateListener {
         override fun onPartialTranscript(text: String) { currentTranscript = text }
-        override fun onTranscriptSaved(transcript: Transcript) { currentTranscript = "" }
+        override fun onTranscriptSaved(transcript: Transcript) { currentTranscript = ""; if (isQuickStartListening) { isQuickStartListening = false; quickStartWorkflow?.let { workflow -> voiceService?.executeWorkflowDirectly(workflow.id, transcript.id) }; quickStartWorkflow = null } }
     }
     private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
         if (permissions[Manifest.permission.RECORD_AUDIO] == true && permissions[Manifest.permission.POST_NOTIFICATIONS] == true) startVoiceService()
@@ -67,15 +74,18 @@ class MainActivity : ComponentActivity() {
         checkPermissionsAndStart()
         checkAlarmPermission()
         setContent {
+            val modalData by uiService.modalState.collectAsState()
             AmbientAITheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     when (currentScreen) {
                         Screen.Timeline -> TimelineScreen(currentTranscript, transcriptRepository, actionExecutionRepository,
                             onNavigateToDb = { currentScreen = Screen.Database }, onToggleExcludeFromContext = ::toggleExcludeFromContext)
                         Screen.Database -> DatabaseScreen(transcriptRepository, actionExecutionRepository, workflowDefinitionRepository,
-                            taskRepository, workflowExecutionRepository, logEntryRepository, onBack = { currentScreen = Screen.Timeline }, onNavigateToReview = { currentScreen = Screen.WorkflowReview })
+                            taskRepository, workflowExecutionRepository, logEntryRepository, onBack = { currentScreen = Screen.Timeline }, onNavigateToReview = { currentScreen = Screen.WorkflowReview }, onWorkflowQuickStart = ::handleWorkflowQuickStart, onWorkflowsRefresh = ::refreshWorkflows)
                         Screen.WorkflowReview -> WorkflowReviewScreen(workflowDefinitionRepository, workflowExecutionRepository, actionExecutionRepository, workflowReviewService, onBack = { currentScreen = Screen.Database })
                     }
+                    quickStartWorkflow?.let { workflow -> QuickStartWorkflowDialog(workflow = workflow, isListening = isQuickStartListening, partialTranscript = currentTranscript, onStartListening = ::startQuickStartListening, onDismiss = ::cancelQuickStart) }
+                    modalData?.let { InfoModal(modalData = it, onDismiss = { uiService.execute("ui.dismissModal", org.json.JSONObject()) }) }
                 }
             }
         }
@@ -106,6 +116,14 @@ class MainActivity : ComponentActivity() {
     }
     private fun startVoiceService() = ContextCompat.startForegroundService(this, Intent(this, VoiceListeningService::class.java))
     private fun toggleExcludeFromContext(transcript: Transcript) = transcriptRepository.toggleExcludeFromContext(transcript.id)
+    private fun handleWorkflowQuickStart(workflow: WorkflowDefinition) {
+        val requiresInput = org.json.JSONObject(workflow.definition).optBoolean("requiresInput", false)
+        if (requiresInput) { quickStartWorkflow = workflow }
+        else { voiceService?.executeWorkflowDirectly(workflow.id, 0) }
+    }
+    private fun startQuickStartListening() { isQuickStartListening = true; quickStartWorkflow?.let { voiceService?.startQuickStartRecording(it.id) } }
+    private fun cancelQuickStart() { quickStartWorkflow = null; isQuickStartListening = false; voiceService?.cancelQuickStart() }
+    private fun refreshWorkflows() { voiceService?.reloadWorkflows() }
     private fun checkAlarmPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager

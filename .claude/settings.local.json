@@ -6,7 +6,8 @@
       "Bash(git pull:*)",
       "Bash(./gradlew build:*)",
       "WebSearch",
-      "Bash(./gradlew:*)"
+      "Bash(./gradlew:*)",
+      "Bash(adb shell:*)"
     ],
     "deny": [],
     "ask": []
