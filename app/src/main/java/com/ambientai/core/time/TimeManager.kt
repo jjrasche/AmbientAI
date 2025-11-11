@@ -19,6 +19,7 @@ class TimeManager @Inject constructor(@ApplicationContext private val context: C
     private val timeFormat24 = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault())
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    private var timerIdCounter = 0
 
     fun execute(actionName: String, input: JSONObject) = when (actionName) {
         "time.get" -> getCurrentTime(input)
@@ -50,12 +51,17 @@ class TimeManager @Inject constructor(@ApplicationContext private val context: C
             throw SecurityException("SCHEDULE_EXACT_ALARM permission not granted. Please enable 'Alarms & reminders' permission in app settings.")
         }
 
+        val timerId = timerIdCounter++
         val triggerAtMillis = SystemClock.elapsedRealtime() + (totalSeconds * 1000L)
-        val intent = Intent(context, TimerReceiver::class.java).apply { putExtra("duration", totalSeconds) }
-        val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val intent = Intent(context, TimerReceiver::class.java).apply {
+            putExtra("duration", totalSeconds)
+            putExtra("timerId", timerId)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(context, timerId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtMillis, pendingIntent)
         return JSONObject().apply {
             put("success", true)
+            put("timerId", timerId)
             put("durationSeconds", totalSeconds)
             put("message", formatDuration(minutes, seconds))
         }

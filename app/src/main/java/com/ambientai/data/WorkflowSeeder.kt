@@ -231,7 +231,7 @@ class WorkflowSeeder @Inject constructor(
       "minutes":"${'$'}duration.response.minutes",
       "seconds":"${'$'}duration.response.seconds"
     },"output":"timer"},
-    {"action":"tts.speak","input":{"text":"${'$'}timer.message timer set"}}
+    {"action":"tts.speak","input":{"text":"Timer set for ${'$'}timer.message"}}
   ]
 }""".trimIndent()
         ))
