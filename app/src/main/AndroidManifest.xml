@@ -65,17 +65,6 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </service>
-        <!-- Quick Settings Tile -->
-        <service
-            android:name=".core.wake.WakeWordTileService"
-            android:icon="@drawable/ic_mic_tile"
-            android:label="@string/tile_label"
-            android:exported="true"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
         <!-- Timer Receiver -->
         <receiver
             android:name=".core.time.TimerReceiver"

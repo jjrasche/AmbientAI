@@ -22,7 +22,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         val properties = Properties()
         file("../local.properties").inputStream().use { properties.load(it) }
-        buildConfigField("String", "PICOVOICE_ACCESS_KEY", "\"${properties.getProperty("picovoice.accessKey", "")}\"")
         buildConfigField("String", "GROQ_API_KEY", "\"${properties.getProperty("groq.apiKey", "")}\"")
         buildConfigField("String", "BRAVE_SEARCH_API_KEY", "\"${properties.getProperty("brave.searchApiKey", "")}\"")
     }
@@ -62,7 +61,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation("androidx.compose.material:material-icons-extended:1.6.5")
-    implementation(libs.porcupine.android)
     implementation("androidx.media:media:1.7.1")
 
     // Flow support for Compose - NEW DEPENDENCY
