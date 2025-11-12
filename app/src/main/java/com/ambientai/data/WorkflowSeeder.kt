@@ -254,7 +254,8 @@ class WorkflowSeeder @Inject constructor(
   },
   "requiresInput": true,
   "steps": [
-    {"action": "music.play", "input": {"query": "${'$'}transcript"}, "output": "result"},
+    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the song/artist name from the user's request. Remove words like 'play', 'music', etc. Return ONLY the artist or song name, nothing else.", "userPrompt": "${'$'}transcript", "temperature": 0.3, "maxTokens": 50}, "output": "query"},
+    {"action": "music.play", "input": {"query": "${'$'}query.response"}, "output": "result"},
     {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
       {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
     ], "else": [

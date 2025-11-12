@@ -63,6 +63,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation("androidx.compose.material:material-icons-extended:1.6.5")
     implementation(libs.porcupine.android)
+    implementation("androidx.media:media:1.7.0")
 
     // Flow support for Compose - NEW DEPENDENCY
     implementation(libs.androidx.lifecycle.runtime.compose)

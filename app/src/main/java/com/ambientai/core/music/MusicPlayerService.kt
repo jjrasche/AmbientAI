@@ -1,38 +1,100 @@
 package com.ambientai.core.music
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
+import android.os.Binder
+import android.os.Build
+import android.os.IBinder
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.media.session.MediaButtonReceiver
+import com.ambientai.MainActivity
+import com.ambientai.R
 import com.ambientai.data.entities.MediaHistory
 import com.ambientai.data.repositories.IMediaHistoryRepository
-import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONObject
 import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class MusicPlayerService @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val musicScanner: MusicScanner,
-    private val mediaHistoryRepository: IMediaHistoryRepository
-) {
+@AndroidEntryPoint
+class MusicPlayerService : Service() {
+    @Inject lateinit var musicScanner: MusicScanner
+    @Inject lateinit var mediaHistoryRepository: IMediaHistoryRepository
     private var mediaPlayer: MediaPlayer? = null
     private var currentSong: Song? = null
     private var currentSongIndex: Int = -1
     private var playbackStartTime: Long = 0
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState
+    private lateinit var mediaSession: MediaSessionCompat
+    private lateinit var audioManager: AudioManager
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private val binder = LocalBinder()
 
-    companion object { private const val TAG = "MusicPlayer" }
+    companion object {
+        private const val TAG = "MusicPlayer"
+        private const val NOTIFICATION_ID = 1002
+        private const val CHANNEL_ID = "music_playback_channel"
+        const val ACTION_PLAY = "com.ambientai.music.PLAY"
+        const val ACTION_PAUSE = "com.ambientai.music.PAUSE"
+        const val ACTION_NEXT = "com.ambientai.music.NEXT"
+        const val ACTION_PREVIOUS = "com.ambientai.music.PREVIOUS"
+        const val ACTION_STOP = "com.ambientai.music.STOP"
+    }
     data class PlaybackState(val currentSong: Song? = null, val positionMs: Long = 0, val isPlaying: Boolean = false)
+    inner class LocalBinder : Binder() { fun getService() = this@MusicPlayerService }
+    override fun onCreate() {
+        super.onCreate()
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        createNotificationChannel()
+        initMediaSession()
+    }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val inputJson = intent?.getStringExtra("input")?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
+        when (intent?.action) {
+            ACTION_PLAY -> {
+                if (inputJson.has("query")) play(inputJson)
+                else if (!isPlaying()) resume(JSONObject())
+            }
+            ACTION_PAUSE -> pause(JSONObject())
+            ACTION_NEXT -> next(JSONObject())
+            ACTION_PREVIOUS -> previous(JSONObject())
+            ACTION_STOP -> { stop(JSONObject()); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+        }
+        MediaButtonReceiver.handleIntent(mediaSession, intent)
+        return START_STICKY
+    }
+    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onDestroy() {
+        super.onDestroy()
+        cleanup()
+        mediaSession.release()
+        abandonAudioFocus()
+    }
     fun execute(actionName: String, input: JSONObject) = when (actionName) { "music.play" -> play(input); "music.pause" -> pause(input); "music.resume" -> resume(input); "music.stop" -> stop(input); "music.next" -> next(input); "music.previous" -> previous(input); "music.getNowPlaying" -> getNowPlaying(input); else -> errorResult("Unknown action: $actionName") }
     private fun successResult(data: Map<String, Any?> = emptyMap()) = JSONObject().apply { put("success", true); data.forEach { (k, v) -> put(k, v) } }
     private fun errorResult(message: String) = JSONObject().apply { put("success", false); put("error", message) }
     private fun play(input: JSONObject): JSONObject {
         val query = input.optString("query", "")
         if (query.isBlank()) return errorResult("Query cannot be empty")
+        if (!requestAudioFocus()) return errorResult("Could not gain audio focus")
         val matches = musicScanner.findMatches(query)
         if (matches.isEmpty()) return errorResult("No songs found matching '$query'")
         val song = matches.first()
@@ -51,6 +113,7 @@ class MusicPlayerService @Inject constructor(
     private fun resume(input: JSONObject): JSONObject {
         if (mediaPlayer == null || currentSong == null) return errorResult("No song to resume")
         if (isPlaying()) return errorResult("Already playing")
+        if (!requestAudioFocus()) return errorResult("Could not gain audio focus")
         Log.d(TAG, "▶ RESUMED")
         mediaPlayer?.start()
         playbackStartTime = System.currentTimeMillis()
@@ -110,5 +173,108 @@ class MusicPlayerService @Inject constructor(
     private fun saveHistory() = currentSong?.let { song -> mediaHistoryRepository.save(MediaHistory(mediaPath = song.path, mediaType = "music", timestamp = playbackStartTime, durationPlayedMs = System.currentTimeMillis() - playbackStartTime)) }
     private fun cleanup() { mediaPlayer?.release(); mediaPlayer = null; currentSong = null; updateState() }
     fun isPlaying() = mediaPlayer?.isPlaying ?: false
-    private fun updateState() { _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, isPlaying()) }
+    private fun updateState() {
+        _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, isPlaying())
+        updateMediaSession()
+        updateNotification()
+    }
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "Music Playback", NotificationManager.IMPORTANCE_LOW).apply { description = "Music player controls"; setShowBadge(false) }
+            )
+        }
+    }
+    private fun initMediaSession() {
+        mediaSession = MediaSessionCompat(this, TAG).apply {
+            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() { resume(JSONObject()) }
+                override fun onPause() { pause(JSONObject()) }
+                override fun onSkipToNext() { next(JSONObject()) }
+                override fun onSkipToPrevious() { previous(JSONObject()) }
+                override fun onStop() { stop(JSONObject()); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            })
+            isActive = true
+        }
+    }
+    private fun updateMediaSession() {
+        currentSong?.let { song ->
+            mediaSession.setMetadata(MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, song.title)
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, song.artist)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song.album)
+                .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, song.durationMs)
+                .build())
+        }
+        val state = if (isPlaying()) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
+        mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
+            .setState(state, mediaPlayer?.currentPosition?.toLong() ?: 0, 1.0f)
+            .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_SKIP_TO_NEXT or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or PlaybackStateCompat.ACTION_STOP)
+            .build())
+    }
+    private fun updateNotification() {
+        if (currentSong == null) return
+        val notification = createNotification()
+        if (isPlaying()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } else {
+            getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification)
+        }
+    }
+    private fun createNotification(): Notification {
+        val song = currentSong ?: return NotificationCompat.Builder(this, CHANNEL_ID).build()
+        val playPauseAction = if (isPlaying()) {
+            NotificationCompat.Action(android.R.drawable.ic_media_pause, "Pause", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PAUSE }, PendingIntent.FLAG_IMMUTABLE))
+        } else {
+            NotificationCompat.Action(android.R.drawable.ic_media_play, "Play", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PLAY }, PendingIntent.FLAG_IMMUTABLE))
+        }
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(song.title)
+            .setContentText("${song.artist} • ${song.album}")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setStyle(androidx.media.app.NotificationCompat.MediaStyle().setMediaSession(mediaSession.sessionToken).setShowActionsInCompactView(0, 1, 2))
+            .addAction(android.R.drawable.ic_media_previous, "Previous", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PREVIOUS }, PendingIntent.FLAG_IMMUTABLE))
+            .addAction(playPauseAction)
+            .addAction(android.R.drawable.ic_media_next, "Next", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_NEXT }, PendingIntent.FLAG_IMMUTABLE))
+            .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
+            .setOngoing(isPlaying())
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+    }
+    private fun requestAudioFocus(): Boolean {
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setOnAudioFocusChangeListener { focusChange ->
+                when (focusChange) {
+                    AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause(JSONObject())
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> mediaPlayer?.setVolume(0.3f, 0.3f)
+                    AudioManager.AUDIOFOCUS_GAIN -> mediaPlayer?.setVolume(1.0f, 1.0f)
+                }
+            }.build()
+            audioManager.requestAudioFocus(audioFocusRequest!!)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus({ focusChange ->
+                when (focusChange) {
+                    AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause(JSONObject())
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> mediaPlayer?.setVolume(0.3f, 0.3f)
+                    AudioManager.AUDIOFOCUS_GAIN -> mediaPlayer?.setVolume(1.0f, 1.0f)
+                }
+            }, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
+        }
+        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+    private fun abandonAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(null)
+        }
+    }
 }

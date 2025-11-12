@@ -226,4 +226,5 @@ class VoiceListeningService : Service() {
             if (isDetecting) wakeWordDetector?.start()
         }
     }
+    fun triggerWakeWordManually() { Log.d(TAG, "🎤 MANUAL TRIGGER (long-press)"); handleWakeWord() }
 }

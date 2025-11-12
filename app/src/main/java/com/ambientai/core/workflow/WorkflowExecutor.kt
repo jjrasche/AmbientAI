@@ -3,7 +3,7 @@ package com.ambientai.workflow
 import android.util.Log
 import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.log.LogManager
-import com.ambientai.core.music.MusicPlayerService
+import com.ambientai.core.music.MusicPlayerHandler
 import com.ambientai.core.music.MusicScanner
 import com.ambientai.core.search.SearchService
 import com.ambientai.core.task.TaskManager
@@ -33,7 +33,7 @@ class WorkflowExecutor @Inject constructor(
     private val logs: LogManager,
     private val time: TimeManager,
     private val workflowActions: WorkflowActionHandler,
-    private val musicPlayer: MusicPlayerService,
+    private val musicPlayer: MusicPlayerHandler,
     private val musicScanner: MusicScanner,
     private val ui: UiService
 ) {
