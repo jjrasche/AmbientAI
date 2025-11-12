@@ -28,8 +28,13 @@ import com.ambientai.R
 import com.ambientai.data.entities.MediaHistory
 import com.ambientai.data.repositories.IMediaHistoryRepository
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import javax.inject.Inject
 
@@ -47,6 +52,7 @@ class MusicPlayerService : Service() {
     private lateinit var audioManager: AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
     private val binder = LocalBinder()
+    private var fadeJob: Job? = null
 
     companion object {
         private const val TAG = "MusicPlayer"
@@ -57,14 +63,18 @@ class MusicPlayerService : Service() {
         const val ACTION_NEXT = "com.ambientai.music.NEXT"
         const val ACTION_PREVIOUS = "com.ambientai.music.PREVIOUS"
         const val ACTION_STOP = "com.ambientai.music.STOP"
+        const val ACTION_GET_NOW_PLAYING = "com.ambientai.music.GET_NOW_PLAYING"
     }
+
     data class PlaybackState(val currentSong: Song? = null, val positionMs: Long = 0, val isPlaying: Boolean = false)
+
     inner class LocalBinder : Binder() { fun getService() = this@MusicPlayerService }
     override fun onCreate() {
         super.onCreate()
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createNotificationChannel()
         initMediaSession()
+        musicScanner.getSongs()
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val inputJson = intent?.getStringExtra("input")?.let { runCatching { JSONObject(it) }.getOrNull() } ?: JSONObject()
@@ -77,6 +87,7 @@ class MusicPlayerService : Service() {
             ACTION_NEXT -> next(JSONObject())
             ACTION_PREVIOUS -> previous(JSONObject())
             ACTION_STOP -> { stop(JSONObject()); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            ACTION_GET_NOW_PLAYING -> getNowPlaying(JSONObject())
         }
         MediaButtonReceiver.handleIntent(mediaSession, intent)
         return START_STICKY
@@ -88,7 +99,7 @@ class MusicPlayerService : Service() {
         mediaSession.release()
         abandonAudioFocus()
     }
-    fun execute(actionName: String, input: JSONObject) = when (actionName) { "music.play" -> play(input); "music.pause" -> pause(input); "music.resume" -> resume(input); "music.stop" -> stop(input); "music.next" -> next(input); "music.previous" -> previous(input); "music.getNowPlaying" -> getNowPlaying(input); else -> errorResult("Unknown action: $actionName") }
+
     private fun successResult(data: Map<String, Any?> = emptyMap()) = JSONObject().apply { put("success", true); data.forEach { (k, v) -> put(k, v) } }
     private fun errorResult(message: String) = JSONObject().apply { put("success", false); put("error", message) }
     private fun play(input: JSONObject): JSONObject {
@@ -116,6 +127,7 @@ class MusicPlayerService : Service() {
         if (!requestAudioFocus()) return errorResult("Could not gain audio focus")
         Log.d(TAG, "▶ RESUMED")
         mediaPlayer?.start()
+        fadeInVolume()
         playbackStartTime = System.currentTimeMillis()
         updateState()
         return successResult(mapOf("message" to "Resumed"))
@@ -171,7 +183,7 @@ class MusicPlayerService : Service() {
         updateState()
     }
     private fun saveHistory() = currentSong?.let { song -> mediaHistoryRepository.save(MediaHistory(mediaPath = song.path, mediaType = "music", timestamp = playbackStartTime, durationPlayedMs = System.currentTimeMillis() - playbackStartTime)) }
-    private fun cleanup() { mediaPlayer?.release(); mediaPlayer = null; currentSong = null; updateState() }
+    private fun cleanup() { fadeJob?.cancel(); fadeJob = null; mediaPlayer?.release(); mediaPlayer = null; currentSong = null; updateState() }
     fun isPlaying() = mediaPlayer?.isPlaying ?: false
     private fun updateState() {
         _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, isPlaying())
@@ -247,13 +259,26 @@ class MusicPlayerService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
+    private fun fadeInVolume() {
+        fadeJob?.cancel()
+        fadeJob = CoroutineScope(Dispatchers.Main).launch {
+            val steps = 20
+            val stepDuration = 50L
+            for (i in 0..steps) {
+                val volume = (i.toFloat() / steps)
+                mediaPlayer?.setVolume(volume, volume)
+                delay(stepDuration)
+            }
+        }
+    }
     private fun requestAudioFocus(): Boolean {
         val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setOnAudioFocusChangeListener { focusChange ->
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(AudioAttributes.Builder().setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).setUsage(AudioAttributes.USAGE_MEDIA).build()).setOnAudioFocusChangeListener { focusChange ->
                 when (focusChange) {
-                    AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause(JSONObject())
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> mediaPlayer?.setVolume(0.3f, 0.3f)
-                    AudioManager.AUDIOFOCUS_GAIN -> mediaPlayer?.setVolume(1.0f, 1.0f)
+                    AudioManager.AUDIOFOCUS_LOSS -> pause(JSONObject())
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> mediaPlayer?.setVolume(0.2f, 0.2f)
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> mediaPlayer?.setVolume(0.2f, 0.2f)
+                    AudioManager.AUDIOFOCUS_GAIN -> { if (!isPlaying() && currentSong != null) resume(JSONObject()) else fadeInVolume() }
                 }
             }.build()
             audioManager.requestAudioFocus(audioFocusRequest!!)
@@ -261,9 +286,10 @@ class MusicPlayerService : Service() {
             @Suppress("DEPRECATION")
             audioManager.requestAudioFocus({ focusChange ->
                 when (focusChange) {
-                    AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> pause(JSONObject())
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> mediaPlayer?.setVolume(0.3f, 0.3f)
-                    AudioManager.AUDIOFOCUS_GAIN -> mediaPlayer?.setVolume(1.0f, 1.0f)
+                    AudioManager.AUDIOFOCUS_LOSS -> pause(JSONObject())
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> mediaPlayer?.setVolume(0.2f, 0.2f)
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> mediaPlayer?.setVolume(0.2f, 0.2f)
+                    AudioManager.AUDIOFOCUS_GAIN -> { if (!isPlaying() && currentSong != null) resume(JSONObject()) else fadeInVolume() }
                 }
             }, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
         }

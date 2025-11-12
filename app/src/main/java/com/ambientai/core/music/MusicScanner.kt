@@ -17,7 +17,11 @@ class MusicScanner @Inject constructor(@ApplicationContext private val context: 
     private val songs = mutableListOf<Song>()
     private var isScanned = false
 
-    companion object { private const val TAG = "MusicScanner" }
+    companion object {
+        private const val TAG = "MusicScanner"
+        private const val MUSIC_DIRECTORY = "/storage/emulated/0/Documents/Second Brain/Second Brain/resource/attachements/music"
+    }
+
     fun execute(actionName: String, input: JSONObject) = when (actionName) { "music.scan" -> scan(input); "music.search" -> search(input); "music.listAll" -> listAll(input); else -> errorResult("Unknown action: $actionName") }
     private fun successResult(data: Map<String, Any?> = emptyMap()) = JSONObject().apply { put("success", true); data.forEach { (k, v) -> put(k, v) } }
     private fun errorResult(message: String) = JSONObject().apply { put("success", false); put("error", message) }
@@ -43,10 +47,9 @@ class MusicScanner @Inject constructor(@ApplicationContext private val context: 
         Log.d(TAG, "▶ SCANNING MUSIC LIBRARY")
         if (!hasPermission()) { Log.e(TAG, "✖ Missing storage permission"); return 0 }
         songs.clear()
-        val musicDirectory = "/storage/emulated/0/Documents/Second Brain/Second Brain/resource/attachements/music"
         val projection = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.ALBUM, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.TRACK)
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DATA} LIKE ?"
-        val selectionArgs = arrayOf("$musicDirectory%")
+        val selectionArgs = arrayOf("$MUSIC_DIRECTORY%")
         context.contentResolver.query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, "${MediaStore.Audio.Media.ARTIST} ASC, ${MediaStore.Audio.Media.ALBUM} ASC, ${MediaStore.Audio.Media.TRACK} ASC")?.use { cursor ->
             val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)

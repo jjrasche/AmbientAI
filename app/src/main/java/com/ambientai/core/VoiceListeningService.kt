@@ -38,10 +38,12 @@ class VoiceListeningService : Service() {
     @Inject lateinit var transcriptRepository: ITranscriptRepository
     @Inject lateinit var workflowRouter: WorkflowRouter
     @Inject lateinit var workflowExecutor: WorkflowExecutor
+    @Inject lateinit var musicPlayerHandler: com.ambientai.core.music.MusicPlayerHandler
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
     private var pendingQuickStartWorkflowId: Long? = null
+    private var wasMusicPlayingBeforeCommand = false
 
     companion object {
         private const val TAG = "VoiceService"
@@ -137,6 +139,7 @@ class VoiceListeningService : Service() {
     }
     private fun handleWakeWord() = isTtsSpeaking.also { wasSpeaking ->
         Log.d(TAG, "⚡ WAKE WORD DETECTED")
+        checkAndPauseMusic()
         if (wasSpeaking) { Log.d(TAG, "⏹ Interrupting TTS"); ttsService?.stop(); isTtsSpeaking = false }
         wakeWordDetector?.stop()
         updateNotification("Listening...")
@@ -181,7 +184,6 @@ class VoiceListeningService : Service() {
         try {
             Log.d(TAG, "🔀 ROUTING: \"$text\"")
             updateNotification("Processing...")
-            wakeWordDetector?.start()
             val match = workflowRouter.route(text, transcriptId)
             if (match == null) {
                 Log.w(TAG, "⚠ NO WORKFLOW MATCH")
@@ -194,16 +196,23 @@ class VoiceListeningService : Service() {
                     else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
                 }
             }
+            resumeMusicIfNeeded()
+            delay(4000)
+            wakeWordDetector?.start()
             updateNotification("Listening for wake word...")
         } catch (e: MultipleMatchException) {
             Log.w(TAG, "⚠ MULTIPLE MATCHES: ${e.message}")
+            resumeMusicIfNeeded()
+            delay(4000)
             wakeWordDetector?.start(); speak("Multiple workflows matched. Please be more specific."); updateNotification("Listening for wake word...")
         } catch (e: Exception) {
             Log.e(TAG, "✖ WORKFLOW EXCEPTION: ${e.message}", e)
+            resumeMusicIfNeeded()
+            delay(4000)
             wakeWordDetector?.start(); speak("Sorry, something went wrong."); updateNotification("Listening for wake word...")
         }
     }
-    private fun handleSttError(errorCode: Int) = updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)").also { if (isDetecting) wakeWordDetector?.start(); pendingQuickStartWorkflowId = null }
+    private fun handleSttError(errorCode: Int) = updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)").also { resumeMusicIfNeeded(); if (isDetecting) wakeWordDetector?.start(); pendingQuickStartWorkflowId = null }
     private fun handleTtsError(errorCode: Int) = Unit
     fun startQuickStartRecording(workflowId: Long) { pendingQuickStartWorkflowId = workflowId; wakeWordDetector?.stop(); updateNotification("Quick Start: Listening..."); speechRecognizer?.start() }
     fun cancelQuickStart() { pendingQuickStartWorkflowId = null; speechRecognizer?.stop(); if (isDetecting) wakeWordDetector?.start(); updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)") }
@@ -217,14 +226,42 @@ class VoiceListeningService : Service() {
                 is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); speak("Workflow failed: ${result.error}") }
                 else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
             }
+            resumeMusicIfNeeded()
+            delay(4000)
             updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)")
             if (isDetecting) wakeWordDetector?.start()
         } catch (e: Exception) {
             Log.e(TAG, "✖ DIRECT EXECUTION EXCEPTION: ${e.message}", e)
             speak("Sorry, something went wrong.")
+            resumeMusicIfNeeded()
+            delay(4000)
             updateNotification(if (isDetecting) "Listening for wake word..." else "Paused (tap tile to resume)")
             if (isDetecting) wakeWordDetector?.start()
         }
     }
     fun triggerWakeWordManually() { Log.d(TAG, "🎤 MANUAL TRIGGER (long-press)"); handleWakeWord() }
+    private fun checkAndPauseMusic() {
+        try {
+            Log.d(TAG, "🎵 Pausing music for voice command")
+            val result = musicPlayerHandler.execute("music.pause", org.json.JSONObject())
+            wasMusicPlayingBeforeCommand = result.optBoolean("success", false)
+        } catch (e: Exception) {
+            Log.d(TAG, "No music playing or music service not available")
+            wasMusicPlayingBeforeCommand = false
+        }
+    }
+    private fun resumeMusicIfNeeded() {
+        if (wasMusicPlayingBeforeCommand) {
+            wasMusicPlayingBeforeCommand = false
+            serviceScope.launch {
+                delay(1500)
+                try {
+                    Log.d(TAG, "🎵 Resuming music after voice command")
+                    musicPlayerHandler.execute("music.resume", org.json.JSONObject())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to resume music: ${e.message}")
+                }
+            }
+        }
+    }
 }
