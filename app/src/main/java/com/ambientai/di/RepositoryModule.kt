@@ -53,4 +53,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindMediaHistoryRepository(impl: MediaHistoryRepository): IMediaHistoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindGoldenDatasetRepository(impl: GoldenDatasetRepository): IGoldenDatasetRepository
 }

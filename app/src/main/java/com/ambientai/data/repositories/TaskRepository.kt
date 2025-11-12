@@ -36,12 +36,13 @@ class TaskRepository @Inject constructor(
             sessionBox.put(TaskSession(taskId = it.id, startedAt = now))
         }
     }
-    override fun pauseTask() = getActive().also {
-        (it.sessions?.get(0) ?: throw IllegalStateException("No active session for task ${it.id}"))
-            .apply { endedAt = System.currentTimeMillis() }
-            .let(sessionBox::put)
-        it.status = TaskStatus.PAUSED
-        taskBox.put(it)
+    override fun pauseTask() = getActive().also { task ->
+        sessionBox.query(TaskSession_.taskId.equal(task.id)).order(TaskSession_.startedAt, OrderFlags.DESCENDING).build().findFirst()
+            ?.apply { endedAt = System.currentTimeMillis() }
+            ?.let(sessionBox::put)
+            ?: throw IllegalStateException("No active session for task ${task.id}")
+        task.status = TaskStatus.PAUSED
+        taskBox.put(task)
     }
     override fun completeTask() = getActive().also {
         it.currentSession()?.apply { endedAt = System.currentTimeMillis() }?.let(sessionBox::put)

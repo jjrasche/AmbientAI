@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AmbientAI is a voice-first AI assistant Android app with workflow automation, context awareness, and task tracking capabilities. It uses wake word detection, speech recognition, LLM-powered workflow execution, and TTS for a hands-free experience.
+AmbientAI is a voice-first AI assistant Android app with workflow automation, context awareness, and task tracking capabilities. It uses button-activated speech recognition, LLM-powered workflow execution, and TTS. Voice activation is triggered via long-press power button for optimal battery life and privacy.
 
 ## Build Commands
 
@@ -30,7 +30,6 @@ The project uses ktlint/detekt (configuration pending). Manual style checks agai
 
 API keys must be set in `local.properties` (not tracked in git):
 ```properties
-picovoice.accessKey=your_key_here
 groq.apiKey=your_key_here
 brave.searchApiKey=your_key_here
 ```
@@ -49,7 +48,8 @@ brave.searchApiKey=your_key_here
 - Business logic services injected via Hilt singletons
 - Workflow system: Router → Executor → ActionHandler
 - AI services: GroqLlmService, NarrativeManager
-- Audio pipeline: VoiceListeningService, WakeWordDetector, SpeechRecognizer, TextToSpeechService
+- Audio pipeline: VoiceListeningService, SpeechRecognizer, TextToSpeechService
+- Music playback: MusicPlayerService with MediaPlayer and audio focus management
 - Context: ContextManager with pluggable ContextProvider implementations
 
 **UI Layer** (`com.ambientai.ui`)
@@ -59,14 +59,15 @@ brave.searchApiKey=your_key_here
 
 ### Voice Pipeline Flow
 
-1. `WakeWordDetector` (Porcupine) listens for wake word
-2. Wake word detected → `SpeechRecognizer` starts STT
-3. Transcript saved to DB → broadcast to UI
-4. `WorkflowRouter` matches transcript to workflow via trigger phrases
-5. `WorkflowExecutor` executes JSON workflow steps
-6. Actions handled by domain services (LLM, TTS, Task, Search, etc.)
-7. `TextToSpeechService` speaks response
-8. Return to wake word listening
+1. User long-presses power button → `VoiceListeningService.startListening()` triggered
+2. Music auto-pauses if playing
+3. `SpeechRecognizer` starts STT
+4. Transcript saved to DB → broadcast to UI
+5. `WorkflowRouter` matches transcript to workflow via trigger phrases
+6. `WorkflowExecutor` executes JSON workflow steps
+7. Actions handled by domain services (LLM, TTS, Task, Search, Music, etc.)
+8. `TextToSpeechService` speaks response
+9. Music auto-resumes with volume fade-in if it was playing before
 
 ### Workflow System
 
@@ -74,7 +75,7 @@ Workflows are **JSON-defined** (not code) with:
 - Trigger phrases for routing
 - Step-based execution with conditional logic
 - Variable resolution: `$variable`, `$object.field`, `$array[0]`
-- Action namespaces: `llm.prompt`, `tts.speak`, `task.start`, `search.query`, `workflow.getExecutionData`
+- Action namespaces: `llm.prompt`, `tts.speak`, `task.start`, `search.query`, `workflow.getExecutionData`, `music.play`, `music.pause`, `music.next`
 - Comprehensive logging: WorkflowExecution + ActionExecution with latency tracking
 
 **Conversational Default**: If no workflow matches, synthetic "conversational_default" workflow created for general LLM interaction.
@@ -187,7 +188,8 @@ See `strategy_coach_feature_spec.md` for comprehensive strategic coaching featur
 - Kotlin 1.9.24 with Compose compiler 1.5.14
 - ObjectBox Gradle plugin must be applied **last** in build.gradle.kts
 - Foreground service requires FOREGROUND_SERVICE_MICROPHONE permission
-- Quick Settings tile (WakeWordTileService) for easy wake word toggle
+- Voice activation via long-press power button (ACTION_ASSIST intent)
+- Music player uses FOREGROUND_SERVICE_MEDIA_PLAYBACK with MediaSession for system integration
 
 ## Common Tasks
 

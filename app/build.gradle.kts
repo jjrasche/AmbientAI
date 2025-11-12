@@ -24,6 +24,7 @@ android {
         file("../local.properties").inputStream().use { properties.load(it) }
         buildConfigField("String", "GROQ_API_KEY", "\"${properties.getProperty("groq.apiKey", "")}\"")
         buildConfigField("String", "BRAVE_SEARCH_API_KEY", "\"${properties.getProperty("brave.searchApiKey", "")}\"")
+        buildConfigField("String", "DEEPGRAM_API_KEY", "\"${properties.getProperty("deepgram.apiKey", "")}\"")
     }
 
     buildTypes {
@@ -63,6 +64,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended:1.6.5")
     implementation("androidx.media:media:1.7.1")
 
+    // Deepgram SDK and WebSocket support
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.java-websocket:Java-WebSocket:1.5.7")
+
     // Flow support for Compose - NEW DEPENDENCY
     implementation(libs.androidx.lifecycle.runtime.compose)
 
@@ -74,6 +79,9 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+
+    // NanoHTTPD for debug HTTP server
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
 
     testImplementation(libs.junit)
 
