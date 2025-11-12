@@ -1,6 +1,7 @@
 package com.ambientai.workflow
 
 import android.util.Log
+import com.ambientai.core.browser.BrowserService
 import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.log.LogManager
 import com.ambientai.core.music.MusicPlayerHandler
@@ -35,7 +36,8 @@ class WorkflowExecutor @Inject constructor(
     private val workflowActions: WorkflowActionHandler,
     private val musicPlayer: MusicPlayerHandler,
     private val musicScanner: MusicScanner,
-    private val ui: UiService
+    private val ui: UiService,
+    private val browser: BrowserService
 ) {
     companion object { private const val TAG = "WorkflowExecutor" }
     private var completionTriggers = mapOf<String, List<Long>>()
@@ -68,7 +70,7 @@ class WorkflowExecutor @Inject constructor(
         Log.d(TAG, "  ↳ ACTION: $actionName")
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
-            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "music" -> if (actionName == "music.scan" || actionName == "music.search" || actionName == "music.listAll") musicScanner.execute(actionName, resolvedInput) else musicPlayer.execute(actionName, resolvedInput); "ui" -> ui.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
+            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "music" -> if (actionName == "music.scan" || actionName == "music.search" || actionName == "music.listAll") musicScanner.execute(actionName, resolvedInput) else musicPlayer.execute(actionName, resolvedInput); "ui" -> ui.execute(actionName, resolvedInput); "browser" -> browser.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = System.currentTimeMillis()))
             Log.d(TAG, "    ✓ ACTION SUCCESS: $actionName (${System.currentTimeMillis() - startTime}ms)")

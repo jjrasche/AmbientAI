@@ -1,0 +1,41 @@
+{
+  "name": "news_headlines",
+  "description": "Fetch top headlines from Hacker News",
+  "triggerPhrases": ["what's on hacker news", "show me tech news", "hacker news headlines"],
+  "steps": [
+    {
+      "action": "browser.navigate",
+      "input": {
+        "url": "https://news.ycombinator.com"
+      },
+      "output": "page"
+    },
+    {
+      "action": "browser.extract",
+      "input": {
+        "sessionId": "$page.sessionId"
+      },
+      "output": "pageContent"
+    },
+    {
+      "action": "llm.prompt",
+      "input": {
+        "systemPrompt": "Extract the top 5 headlines from this Hacker News page. Return only the titles, numbered 1-5.",
+        "prompt": "$pageContent.text"
+      },
+      "output": "headlines"
+    },
+    {
+      "action": "browser.close",
+      "input": {
+        "sessionId": "$page.sessionId"
+      }
+    },
+    {
+      "action": "tts.speak",
+      "input": {
+        "text": "Here are the top tech headlines: $headlines"
+      }
+    }
+  ]
+}

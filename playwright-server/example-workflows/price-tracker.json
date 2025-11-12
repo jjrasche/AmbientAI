@@ -1,0 +1,50 @@
+{
+  "name": "product_price_check",
+  "description": "Check product price on a website (example: Amazon-like site)",
+  "triggerPhrases": ["check price of", "what's the price of"],
+  "steps": [
+    {
+      "action": "browser.navigate",
+      "input": {
+        "url": "$productUrl"
+      },
+      "output": "page"
+    },
+    {
+      "action": "browser.waitFor",
+      "input": {
+        "sessionId": "$page.sessionId",
+        "selector": "#price, .price, [data-testid='price']",
+        "timeout": 10000
+      }
+    },
+    {
+      "action": "browser.scrape",
+      "input": {
+        "sessionId": "$page.sessionId",
+        "selector": "#price, .price, [data-testid='price']"
+      },
+      "output": "priceText"
+    },
+    {
+      "action": "browser.scrape",
+      "input": {
+        "sessionId": "$page.sessionId",
+        "selector": "h1, #title, .product-title"
+      },
+      "output": "productName"
+    },
+    {
+      "action": "browser.close",
+      "input": {
+        "sessionId": "$page.sessionId"
+      }
+    },
+    {
+      "action": "tts.speak",
+      "input": {
+        "text": "$productName costs $priceText"
+      }
+    }
+  ]
+}
