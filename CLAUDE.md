@@ -2,9 +2,151 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Core Development Mindset: Zero-Based Thinking
+
+**START HERE**: Before implementing ANY feature, ask from first principles:
+
+### The Fundamental Question
+**"How will I know this works?"**
+
+If the answer is "the user will test it manually," you're doing it wrong.
+
+### Zero-Based Implementation Philosophy
+
+1. **Testability is not optional** - It's the first requirement, not an afterthought
+2. **Manual testing is failure** - If you can't automate testing, you haven't finished designing
+3. **Ship tested code** - Your work is not done until you've validated it yourself
+4. **Build confidence, not hope** - "I think this works" → "I tested this works"
+
+### The Test-First Question Flow
+
+Before writing implementation code, answer these:
+
+1. **What are the inputs to this system?**
+   - Can I simulate them without manual interaction?
+   - Do I need to build a simulator?
+
+2. **What are the outputs/behaviors?**
+   - How do I observe them programmatically?
+   - Do I need to add debug endpoints?
+
+3. **What are the edge cases?**
+   - Incomplete inputs, timing issues, state transitions
+   - Can I generate test scenarios that cover these?
+
+4. **How will I iterate?**
+   - Can I change code → rebuild → retest in under 60 seconds?
+   - Is my feedback loop fast enough?
+
+If you can't answer these questions, **STOP**. Build the testing infrastructure first.
+
 ## Project Overview
 
 AmbientAI is a voice-first AI assistant Android app with workflow automation, context awareness, and task tracking capabilities. It uses button-activated speech recognition, LLM-powered workflow execution, and TTS. Voice activation is triggered via long-press power button for optimal battery life and privacy.
+
+## Development Philosophy: Test-Driven Implementation
+
+When implementing changes to core functionality (especially voice pipeline, routing, workflow execution), you MUST:
+
+1. **Build testability infrastructure FIRST** before implementing the actual change
+2. **Test your implementation** using the debug server API before declaring work complete
+3. **Document test results** to validate the change meets requirements
+
+### Test-Driven Implementation Workflow
+
+#### Step 1: Identify Testability Gaps
+Before implementing a feature, ask:
+- Can I test this change without manual interaction?
+- Do I need to add test endpoints to the debug server?
+- Can I simulate the inputs this code receives?
+
+#### Step 2: Build Testing Infrastructure
+Create the testing tools you need:
+- Add debug API endpoints (`DebugServer.kt`)
+- Create simulator classes (e.g., `SttSimulator.kt` for testing voice routing)
+- Add test scenario generators for common cases
+- Make configuration tunable at runtime via API
+
+#### Step 3: Implement & Test
+- Make your changes
+- Install to device: `./gradlew installDebug`
+- Run automated tests via debug API
+- Validate results match expectations
+- Iterate based on test feedback
+
+#### Step 4: Document
+- Update CLAUDE.md with new test endpoints
+- Add examples of how to test the feature
+- Document expected behaviors and edge cases
+
+### Example: Voice Routing Implementation
+
+**Wrong approach** ❌:
+1. Implement routing heuristics in VoiceListeningService
+2. Deploy and wait for user to manually test by speaking
+3. Discover issues days later
+
+**Correct approach** ✅:
+1. Create `SttSimulator.kt` to simulate Deepgram partial transcripts
+2. Add `/api/test/partial` and `/api/test/sequence` endpoints
+3. Generate predefined test scenarios (quick commands, parameterized commands, incomplete utterances)
+4. Implement routing logic with `IncompletenessDetector.kt`
+5. Run all test scenarios via curl and validate results
+6. Document timing thresholds and decision logic
+7. Ship with confidence
+
+### When to Apply Test-Driven Approach
+
+**Always test-driven**:
+- Voice pipeline changes (STT, routing, workflow triggering)
+- Workflow execution logic
+- Context assembly and LLM prompt construction
+- Music player state transitions
+- Task timing and session tracking
+
+**Can skip testing infrastructure**:
+- UI layout changes (visually verify)
+- Simple data model additions
+- Dependency updates
+- Documentation updates
+
+### Real Example: Voice Routing Fix (2025-01-13)
+
+**Problem**: "start task" was triggering immediately before user could say "grocery shopping"
+
+**Solution Process**:
+
+1. **Built test infrastructure** (`SttSimulator.kt`, debug API endpoints)
+2. **Created test scenarios**:
+   - Parameterized commands: "start task grocery shopping"
+   - Instant commands: "pause"
+   - Incomplete utterances: "place on"
+   - Cancellations: "start task wait no"
+
+3. **Implemented context-aware incompleteness detection**:
+   - Check workflow `requiresInput` flag
+   - Require 2+ words after trigger phrase
+   - Detect partial trigger phrases ("start" is part of "start task")
+
+4. **Tested via API**:
+   ```bash
+   curl -X POST http://localhost:8080/api/test/sequence -d '{
+     "partials": [
+       {"text": "start", "elapsed_ms": 1500, "confidence": 0.8},
+       {"text": "start task", "elapsed_ms": 2300, "confidence": 0.88},
+       {"text": "start task grocery shopping", "elapsed_ms": 4100, "confidence": 0.94}
+     ]
+   }'
+   ```
+
+5. **Validated results**: All scenarios passing
+   - "start" → WAIT (incomplete)
+   - "start task" → WAIT (requires input)
+   - "start task grocery shopping" → EXECUTE ✅
+
+6. **Documented** in CLAUDE.md with examples
+
+**Key insight**: Testing infrastructure enabled rapid iteration (6 test cycles) without manual voice testing. Changed logic, rebuilt, tested via curl, fixed issues, repeat.
 
 ## Build Commands
 
@@ -190,6 +332,170 @@ See `strategy_coach_feature_spec.md` for comprehensive strategic coaching featur
 - Foreground service requires FOREGROUND_SERVICE_MICROPHONE permission
 - Voice activation via long-press power button (ACTION_ASSIST intent)
 - Music player uses FOREGROUND_SERVICE_MEDIA_PLAYBACK with MediaSession for system integration
+
+## Debug Server & STT Simulation
+
+The app runs a debug HTTP server on port 8080 for testing and development.
+
+### Setup
+```bash
+# Forward port from device to local machine
+adb forward tcp:8080 tcp:8080
+
+# Test connection
+curl http://localhost:8080/api/ping
+```
+
+### STT Simulation & Routing Tests
+
+**Test a single partial transcript:**
+```bash
+curl -X POST http://localhost:8080/api/test/partial \
+  -H "Content-Type: application/json" \
+  -d '{"text": "start task", "elapsed_ms": 2333, "confidence": 0.85}'
+```
+
+**Test a sequence (simulates real STT flow):**
+```bash
+curl -X POST http://localhost:8080/api/test/sequence \
+  -H "Content-Type: application/json" \
+  -d '{
+    "partials": [
+      {"text": "start", "elapsed_ms": 1500, "confidence": 0.80},
+      {"text": "start task", "elapsed_ms": 2300, "confidence": 0.88},
+      {"text": "start task grocery shopping", "elapsed_ms": 4100, "confidence": 0.94}
+    ]
+  }' | jq
+```
+
+**Get predefined test scenarios:**
+```bash
+curl http://localhost:8080/api/test/scenarios | jq
+```
+
+**Test UtteranceEnd (final transcript):**
+```bash
+curl -X POST http://localhost:8080/api/test/utterance_end \
+  -H "Content-Type: application/json" \
+  -d '{"text": "start task grocery shopping", "elapsed_ms": 4500}' | jq
+```
+
+**View current routing configuration:**
+```bash
+curl http://localhost:8080/api/config | jq
+```
+
+### Understanding Test Results
+
+Test responses show the routing decision path:
+```json
+{
+  "text": "start task",
+  "elapsed_ms": 2333,
+  "word_count": 2,
+  "decision": "WAIT",
+  "reason": "Utterance appears incomplete",
+  "would_trigger": false,
+  "matched_workflow": null,
+  "tier": "QUICK",
+  "confidence": 0.85,
+  "decision_path": [
+    "TIMING_OK: 2333ms >= 1500ms",
+    "NO_CANCELLATION",
+    "INCOMPLETE_UTTERANCE"
+  ]
+}
+```
+
+**Key fields:**
+- `decision`: WAIT | EXECUTE | CANCEL | CONVERSATIONAL | NO_MATCH
+- `would_trigger`: Whether workflow would execute
+- `matched_workflow`: Workflow name if matched
+- `tier`: INSTANT | QUICK | COMPLEX | CONVERSATIONAL
+- `decision_path`: Step-by-step routing logic
+
+### Iterating on Routing Logic
+
+1. **Test hypothesis**: Modify routing logic in code
+2. **Run test scenarios**: `curl http://localhost:8080/api/test/scenarios | jq`
+3. **Analyze results**: Check if decisions match expectations
+4. **Refine**: Adjust thresholds/heuristics in `RoutingConfig.kt`
+5. **Rebuild & test**: `./gradlew installDebug && curl ...`
+
+### Testing Requirements Before Completion
+
+When Claude implements a feature, the work is NOT COMPLETE until:
+
+#### 1. Build Succeeds
+```bash
+./gradlew installDebug
+# Must complete without errors
+```
+
+#### 2. App Installs and Runs
+```bash
+adb shell am force-stop com.ambientai
+adb shell am start -n com.ambientai/.MainActivity
+# Must launch without crashes
+```
+
+#### 3. Test Scenarios Pass
+```bash
+# For voice routing changes
+curl http://localhost:8080/api/test/scenarios | jq
+
+# Run each scenario and verify:
+# - Expected behaviors match actual results
+# - No false positives (triggers when it shouldn't)
+# - No false negatives (doesn't trigger when it should)
+```
+
+#### 4. Results Documented
+Create a summary showing:
+- What was changed
+- Test scenarios executed
+- Pass/fail status for each scenario
+- Any edge cases discovered
+- Recommended next steps
+
+#### 5. Claude.md Updated
+If new test endpoints or workflows were added:
+- Document the new endpoints
+- Provide curl examples
+- Explain what the tests validate
+
+### Testing Anti-Patterns to Avoid
+
+❌ **Don't**: "I've implemented the feature, please test it"
+✅ **Do**: "I've implemented and tested the feature. Here are the results..."
+
+❌ **Don't**: Implement complex logic without testability
+✅ **Do**: Build simulator/test harness first, then implement
+
+❌ **Don't**: Rely solely on unit tests that mock everything
+✅ **Do**: Test with real components integrated (via debug API)
+
+❌ **Don't**: Test only the happy path
+✅ **Do**: Test edge cases, incomplete inputs, cancellations, timing issues
+
+❌ **Don't**: Change core behavior without validating all scenarios still pass
+✅ **Do**: Re-run full test suite after any change to routing/workflow logic
+
+### Other Debug Endpoints
+
+```bash
+# Service status
+curl http://localhost:8080/api/status
+
+# List all workflows
+curl http://localhost:8080/api/workflows
+
+# Recent transcripts
+curl http://localhost:8080/api/transcripts?limit=5
+
+# Trigger workflow directly
+curl -X POST http://localhost:8080/api/workflow/trigger/play_music
+```
 
 ## Common Tasks
 

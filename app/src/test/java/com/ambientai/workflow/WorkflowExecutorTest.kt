@@ -2,9 +2,14 @@ package com.ambientai.workflow
 
 import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.log.LogManager
+import com.ambientai.core.music.MusicPlayerHandler
+import com.ambientai.core.music.MusicScanner
 import com.ambientai.core.search.SearchService
 import com.ambientai.core.task.TaskManager
+import com.ambientai.core.time.TimeManager
 import com.ambientai.core.tts.TextToSpeechService
+import com.ambientai.core.ui.UiService
+import com.ambientai.core.workflow.actions.WorkflowActionHandler
 import com.ambientai.data.entities.ActionExecution
 import com.ambientai.data.entities.WorkflowDefinition
 import com.ambientai.data.entities.WorkflowExecution
@@ -15,6 +20,8 @@ import kotlinx.coroutines.test.runTest
 import org.json.JSONObject
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -26,6 +33,7 @@ import kotlin.test.assertTrue
  * - Workflow execution logic can be tested without real services
  * - Repository interactions can be verified
  */
+@RunWith(RobolectricTestRunner::class)
 class WorkflowExecutorTest {
 
     private lateinit var executionRepo: IWorkflowExecutionRepository
@@ -35,6 +43,11 @@ class WorkflowExecutorTest {
     private lateinit var llm: GroqLlmService
     private lateinit var search: SearchService
     private lateinit var logs: LogManager
+    private lateinit var time: TimeManager
+    private lateinit var workflowActions: WorkflowActionHandler
+    private lateinit var musicPlayer: MusicPlayerHandler
+    private lateinit var musicScanner: MusicScanner
+    private lateinit var ui: UiService
     private lateinit var executor: WorkflowExecutor
 
     @Before
@@ -47,6 +60,11 @@ class WorkflowExecutorTest {
         llm = mockk(relaxed = true)
         search = mockk(relaxed = true)
         logs = mockk(relaxed = true)
+        time = mockk(relaxed = true)
+        workflowActions = mockk(relaxed = true)
+        musicPlayer = mockk(relaxed = true)
+        musicScanner = mockk(relaxed = true)
+        ui = mockk(relaxed = true)
 
         // Create the executor with mocked dependencies
         executor = WorkflowExecutor(
@@ -56,7 +74,12 @@ class WorkflowExecutorTest {
             tasks = tasks,
             llm = llm,
             search = search,
-            logs = logs
+            logs = logs,
+            time = time,
+            workflowActions = workflowActions,
+            musicPlayer = musicPlayer,
+            musicScanner = musicScanner,
+            ui = ui
         )
     }
 

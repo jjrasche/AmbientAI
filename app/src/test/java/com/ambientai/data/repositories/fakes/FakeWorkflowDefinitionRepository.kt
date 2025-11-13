@@ -15,12 +15,13 @@ class FakeWorkflowDefinitionRepository : IWorkflowDefinitionRepository {
     override fun getAll(): List<WorkflowDefinition> = workflows.values.toList()
     override fun getEnabled(): List<WorkflowDefinition> = workflows.values.filter { it.enabled }
     override fun update(workflow: WorkflowDefinition) = workflows.set(workflow.id, workflow)
-    override fun delete(id: Long) = workflows.remove(id)
-    override fun delete(workflow: WorkflowDefinition) = workflows.remove(workflow.id)
+    override fun delete(id: Long) { workflows.remove(id) }
+    override fun delete(workflow: WorkflowDefinition) { workflows.remove(workflow.id) }
     override fun deleteAll() = workflows.clear()
     override fun count(): Long = workflows.size.toLong()
     override fun countEnabled(): Long = workflows.values.count { it.enabled }.toLong()
     override fun getAllWorkflows(): Flow<List<WorkflowDefinition>> = flowOf(workflows.values.toList())
+    override fun updateReviewNotes(id: Long, notes: String) { workflows[id]?.let { workflows[id] = it.copy(reviewNotes = notes) } }
     fun addWorkflow(workflow: WorkflowDefinition) = save(workflow)
     fun clear() = workflows.clear().also { nextId = 1L }
 }

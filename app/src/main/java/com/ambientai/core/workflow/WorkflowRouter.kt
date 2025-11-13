@@ -21,12 +21,14 @@ class WorkflowRouter @Inject constructor(
         private const val SHORT_TRANSCRIPT_THRESHOLD = 10
     }
     fun loadWorkflows() { workflows = workflowRepo.getEnabled() }
-    fun route(transcript: String, transcriptId: Long): WorkflowMatch? = workflows.takeIf { it.isNotEmpty() }?.let {
+    fun route(transcript: String, transcriptId: Long, isPartial: Boolean = false): WorkflowMatch? = workflows.takeIf { it.isNotEmpty() }?.let {
         val wordCount = transcript.split("\\s+".toRegex()).size
         val lowerTranscript = transcript.lowercase()
+        Log.d(TAG, "🔍 ROUTING: \"$transcript\" ($wordCount words)${if (isPartial) " [PARTIAL]" else ""}")
         val matches = workflows.mapNotNull { workflow -> if (checkConditions(workflow)) findMatchingTrigger(workflow, lowerTranscript)?.let { matchedTrigger -> WorkflowMatchCandidate(definition = workflow, matchedTrigger = matchedTrigger, matchLength = matchedTrigger.length) } else null }
+        Log.d(TAG, "   ↳ Found ${matches.size} exact trigger matches")
         when {
-            matches.isEmpty() && wordCount < SHORT_TRANSCRIPT_THRESHOLD -> {
+            matches.isEmpty() && wordCount < SHORT_TRANSCRIPT_THRESHOLD && !isPartial -> {
                 Log.d(TAG, "🧠 SHORT TRANSCRIPT ($wordCount words) - attempting LLM intent extraction")
                 extractIntentWithLlm(transcript, transcriptId)
             }

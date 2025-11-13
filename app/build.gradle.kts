@@ -84,6 +84,10 @@ dependencies {
     implementation("org.nanohttpd:nanohttpd:2.3.1")
 
     testImplementation(libs.junit)
+    testImplementation("io.mockk:mockk:1.13.8")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.24")
+    testImplementation("org.robolectric:robolectric:4.11.1")
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)

@@ -7,7 +7,12 @@
       "Bash(./gradlew build:*)",
       "WebSearch",
       "Bash(./gradlew:*)",
-      "Bash(adb shell:*)"
+      "Bash(adb shell:*)",
+      "Bash(adb forward:*)",
+      "Bash(curl:*)",
+      "Bash(adb logcat:*)",
+      "Bash(python -m json.tool:*)",
+      "Bash(adb devices:*)"
     ],
     "deny": [],
     "ask": []

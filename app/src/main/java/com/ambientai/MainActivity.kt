@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.provider.Settings
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -131,5 +132,12 @@ class MainActivity : ComponentActivity() {
                 Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")).also { startActivity(it) }
             }
         }
+    }
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN && voiceService?.isRecording() == true) {
+            voiceService?.stopRecordingManually()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 }

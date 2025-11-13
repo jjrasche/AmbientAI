@@ -1,6 +1,7 @@
 package com.ambientai.core.stt
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -27,6 +28,7 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
     private var lastSpeechTime = 0L
     private var audioBuffer = mutableListOf<ByteArray>()
     private var audioFilePath: String? = null
+    private var recordingStartTime = 0L
 
     companion object {
         private const val TAG = "DeepgramSTT"
@@ -43,7 +45,8 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
     fun isRecording() = isRecording
     fun start() {
         if (isRecording) { Log.w(TAG, "⚠ STT START IGNORED (already recording)"); return }
-        Log.d(TAG, "▶ DEEPGRAM STT STARTED")
+        recordingStartTime = System.currentTimeMillis()
+        Log.d(TAG, "▶ DEEPGRAM STT STARTED at $recordingStartTime")
         currentTranscript.clear()
         audioBuffer.clear()
         lastSpeechTime = System.currentTimeMillis()
@@ -84,17 +87,27 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
                             val transcript = alternatives?.optJSONObject(0)?.optString("transcript") ?: ""
                             val isFinal = channel?.optBoolean("is_final") ?: false
                             if (transcript.isNotBlank()) {
+                                val elapsed = System.currentTimeMillis() - recordingStartTime
                                 lastSpeechTime = System.currentTimeMillis()
                                 if (isFinal) {
                                     currentTranscript.append(transcript).append(" ")
-                                    Log.d(TAG, "✓ FINAL: \"$transcript\"")
+                                    Log.d(TAG, "✓ FINAL CHUNK [${elapsed}ms]: \"$transcript\"")
                                 } else {
+                                    Log.d(TAG, "   PARTIAL [${elapsed}ms]: \"$transcript\"")
                                     onPartialTranscript(currentTranscript.toString() + transcript)
                                 }
                             }
                         }
-                        "SpeechStarted" -> { Log.d(TAG, "🗣 SPEECH STARTED"); lastSpeechTime = System.currentTimeMillis() }
-                        "UtteranceEnd" -> { Log.d(TAG, "🔇 UTTERANCE END"); finalizeTranscript() }
+                        "SpeechStarted" -> {
+                            val elapsed = System.currentTimeMillis() - recordingStartTime
+                            Log.d(TAG, "🗣 SPEECH STARTED [${elapsed}ms]")
+                            lastSpeechTime = System.currentTimeMillis()
+                        }
+                        "UtteranceEnd" -> {
+                            val elapsed = System.currentTimeMillis() - recordingStartTime
+                            Log.d(TAG, "🔇 UTTERANCE END [${elapsed}ms] - triggering finalize")
+                            finalizeTranscript()
+                        }
                     }
                 } catch (e: Exception) { Log.e(TAG, "✖ JSON PARSE ERROR: ${e.message}") }
             }
@@ -102,6 +115,7 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { Log.d(TAG, "🔌 WebSocket CLOSED: $reason") }
         })
     }
+    @SuppressLint("MissingPermission")
     private fun startAudioCapture() {
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         audioRecord = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, bufferSize)

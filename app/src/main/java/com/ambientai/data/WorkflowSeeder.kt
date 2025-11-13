@@ -9,6 +9,10 @@ import javax.inject.Singleton
 class WorkflowSeeder @Inject constructor(
     private val repo: IWorkflowDefinitionRepository
 ) {
+    fun reseedAll() {
+        repo.deleteAll()
+        seed()
+    }
     fun seed() {
         seedTaskWorkflows()
         seedLogWorkflow()
@@ -150,7 +154,7 @@ class WorkflowSeeder @Inject constructor(
     private fun seedNarrativeWorkflow() {
         repo.save(WorkflowDefinition(
             name = "thinker",
-            enabled = true,
+            enabled = false,
             definition = """{
   "triggers":{
     "keywords":["update narrative","what do you know","tell me what you understand"],
@@ -255,12 +259,7 @@ class WorkflowSeeder @Inject constructor(
   "requiresInput": true,
   "steps": [
     {"action": "llm.prompt", "input": {"systemPrompt": "Extract the song/artist name from the user's request. Remove words like 'play', 'music', etc. Return ONLY the artist or song name, nothing else.", "userPrompt": "${'$'}transcript", "temperature": 0.3, "maxTokens": 50}, "output": "query"},
-    {"action": "music.play", "input": {"query": "${'$'}query.response"}, "output": "result"},
-    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
-      {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
-    ], "else": [
-      {"action": "tts.speak", "input": {"text": "${'$'}result.error"}}
-    ]}
+    {"action": "music.play", "input": {"query": "${'$'}query.response"}, "output": "result"}
   ]
 }""".trimIndent()
         ))

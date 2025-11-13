@@ -22,6 +22,7 @@ class FakeWorkflowExecutionRepository : IWorkflowExecutionRepository {
     override fun deleteAll() = executions.clear().also { actions.clear() }
     override fun getAllExecutions(): Flow<List<WorkflowExecution>> = flowOf(executions.values.toList())
     override fun getRecentExecutions(): Flow<List<WorkflowExecution>> = flowOf(executions.values.sortedByDescending { it.timestamp })
+    override fun getExecutionsForWorkflow(workflowId: Long): Flow<List<WorkflowExecution>> = flowOf(executions.values.filter { it.workflowId == workflowId }.sortedByDescending { it.timestamp })
     fun getExecutionCount(): Int = executions.size
     fun getActionCount(): Int = actions.size
     fun getSuccessfulExecutions(): List<WorkflowExecution> = executions.values.filter { it.success }

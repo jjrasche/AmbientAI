@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -14,8 +16,10 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import com.ambientai.R
+import com.ambientai.core.audio.AudioFeedbackService
 import com.ambientai.core.stt.DeepgramSttService
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.data.entities.GoldenDataset
@@ -34,6 +38,7 @@ import javax.inject.Inject
 class VoiceListeningService : Service() {
     private var deepgramStt: DeepgramSttService? = null
     private var ttsService: TextToSpeechService? = null
+    private var audioFeedback: AudioFeedbackService? = null
 
     @Inject lateinit var transcriptRepository: ITranscriptRepository
     @Inject lateinit var goldenDatasetRepository: IGoldenDatasetRepository
@@ -41,6 +46,7 @@ class VoiceListeningService : Service() {
     @Inject lateinit var workflowExecutor: WorkflowExecutor
     @Inject lateinit var musicPlayerHandler: com.ambientai.core.music.MusicPlayerHandler
     @Inject lateinit var debugServer: com.ambientai.debug.DebugServer
+    @Inject lateinit var workflowSeeder: com.ambientai.data.WorkflowSeeder
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
@@ -49,11 +55,13 @@ class VoiceListeningService : Service() {
     private var currentAudioFilePath: String? = null
     private var lastPartialTranscript = ""
     private var workflowTriggeredDuringRecording = false
+    private var recordingStartTime: Long = 0
 
     companion object {
         private const val TAG = "VoiceService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "ambient_ai_voice_channel"
+        private const val ACTION_STOP_RECORDING = "com.ambientai.STOP_RECORDING"
         @Volatile private var isRunning = false
         @Volatile private var isTtsSpeaking = false
         fun isServiceRunning() = isRunning
@@ -79,11 +87,18 @@ class VoiceListeningService : Service() {
         debugServer.startServer()
         initializeComponents()
     }
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_RECORDING) {
+            Log.d(TAG, "⏹ STOP from notification")
+            stopRecordingManually()
+        }
+        return START_STICKY
+    }
     override fun onBind(intent: Intent?) = binder
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        audioFeedback?.cleanup()
         deepgramStt?.cleanup()
         ttsService?.cleanup()
         debugServer.stopServer()
@@ -96,16 +111,27 @@ class VoiceListeningService : Service() {
             )
         }
     }
-    private fun createNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setContentTitle("Ambient AI").setContentText(text).setSmallIcon(R.mipmap.ic_launcher)
-        .setPriority(NotificationCompat.PRIORITY_LOW).setOngoing(true).build()
+    private fun createNotification(text: String): Notification {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Ambient AI").setContentText(text).setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_LOW).setOngoing(true)
+        if (deepgramStt?.isRecording() == true) {
+            val stopIntent = Intent(this, VoiceListeningService::class.java).apply { action = ACTION_STOP_RECORDING }
+            val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            builder.addAction(android.R.drawable.ic_delete, "Stop", stopPendingIntent)
+        }
+        return builder.build()
+    }
     private fun updateNotification(text: String) = getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, createNotification(text))
     private fun initializeComponents() = serviceScope.launch {
         try {
+            audioFeedback = AudioFeedbackService(applicationContext)
             ttsService = TextToSpeechService(applicationContext, ::handleTtsError)
             if (!(ttsService?.initialize() ?: false)) return@launch
             deepgramStt = DeepgramSttService(applicationContext, ::handlePartialTranscript, ::handleTranscript, ::handleSttError, ::handleAudioSaved, ::handleRecordingStopped)
             if (!deepgramStt!!.initialize()) { Log.e(TAG, "✖ DEEPGRAM STT INIT FAILED"); return@launch }
+            Log.d(TAG, "🔄 RESEEDING WORKFLOWS FROM CODE")
+            workflowSeeder.reseedAll()
             reloadWorkflows()
             updateNotification("Ready - Long press power button to speak")
         } catch (e: Exception) { Log.e(TAG, "✖ INIT ERROR: ${e.message}") }
@@ -115,12 +141,14 @@ class VoiceListeningService : Service() {
         workflowExecutor.loadCompletionTriggers()
     }
     private fun startListening() {
-        Log.d(TAG, "🎤 MANUAL TRIGGER")
+        recordingStartTime = System.currentTimeMillis()
+        Log.d(TAG, "🎤 MANUAL TRIGGER at ${recordingStartTime}")
         checkAndPauseMusic()
         if (isTtsSpeaking) { Log.d(TAG, "⏹ Interrupting TTS"); ttsService?.stop(); isTtsSpeaking = false }
         lastPartialTranscript = ""
         workflowTriggeredDuringRecording = false
         updateNotification("Listening...")
+        audioFeedback?.playStartTone()
         val isBluetoothConnected = isBluetoothAudioConnected()
         Log.d(TAG, "🎧 Bluetooth audio: ${if (isBluetoothConnected) "CONNECTED" else "NOT CONNECTED"}")
         serviceScope.launch {
@@ -165,40 +193,74 @@ class VoiceListeningService : Service() {
         }
     }
     private fun handlePartialTranscript(text: String) {
+        val timestamp = System.currentTimeMillis()
+        val elapsed = if (recordingStartTime > 0) timestamp - recordingStartTime else 0
+        Log.d(TAG, "📝 PARTIAL [${elapsed}ms]: \"$text\" (${text.split("\\s+".toRegex()).size} words)")
         listeners.forEach { it.onPartialTranscript(text) }
         if (!workflowTriggeredDuringRecording && text.length > lastPartialTranscript.length) {
             lastPartialTranscript = text
-            checkPartialForWorkflowTriggers(text)
+            checkPartialForWorkflowTriggers(text, elapsed)
         }
     }
-    private fun checkPartialForWorkflowTriggers(partialText: String) = serviceScope.launch {
+    private fun checkPartialForWorkflowTriggers(partialText: String, elapsedMs: Long) = serviceScope.launch {
         try {
-            val match = workflowRouter.route(partialText, -1)
+            Log.d(TAG, "🔎 CHECKING PARTIAL for workflow triggers (elapsed: ${elapsedMs}ms)")
+            val wordCount = partialText.split("\\s+".toRegex()).size
+            if (elapsedMs < com.ambientai.core.workflow.RoutingConfig.MIN_ELAPSED_BEFORE_ROUTING_MS) {
+                Log.d(TAG, "   ↳ TOO EARLY: ${elapsedMs}ms < ${com.ambientai.core.workflow.RoutingConfig.MIN_ELAPSED_BEFORE_ROUTING_MS}ms, ignoring")
+                return@launch
+            }
+            val incompletenessDetector = com.ambientai.core.workflow.IncompletenessDetector()
+            if (incompletenessDetector.detectCancellation(partialText)) {
+                Log.d(TAG, "   ↳ CANCELLATION DETECTED, stopping")
+                deepgramStt?.stop()
+                return@launch
+            }
+            val match = workflowRouter.route(partialText, -1, isPartial = true)
+            if (incompletenessDetector.isIncomplete(partialText, wordCount, match?.definition)) {
+                Log.d(TAG, "   ↳ INCOMPLETE UTTERANCE, waiting for more")
+                return@launch
+            }
+            val tier = classifyCommandTier(wordCount, elapsedMs)
+            Log.d(TAG, "   ↳ Classified as tier: $tier")
             if (match != null && match.definition.name != "conversational_default") {
-                Log.d(TAG, "🎯 PARTIAL MATCH: ${match.definition.name} from \"$partialText\"")
+                Log.d(TAG, "🎯 PARTIAL MATCH at ${elapsedMs}ms (tier: $tier): ${match.definition.name} from \"$partialText\"")
                 workflowTriggeredDuringRecording = true
                 deepgramStt?.stop()
-                when (workflowExecutor.execute(match)) {
-                    is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${(workflowExecutor.execute(match) as? WorkflowResult.Failure)?.error}") }
+                val transcript = Transcript(text = partialText, timestamp = System.currentTimeMillis(), audioFilePath = currentAudioFilePath ?: "").also { transcriptRepository.save(it) }
+                Log.d(TAG, "💾 SAVED PARTIAL TRANSCRIPT: id=${transcript.id}, text=\"$partialText\"")
+                updateGoldenDatasetWithWorkflow(transcript.id, match.definition.name)
+                val matchWithTranscriptId = workflowRouter.route(partialText, transcript.id, isPartial = true)
+                when (matchWithTranscriptId?.let { workflowExecutor.execute(it) }) {
+                    is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${(matchWithTranscriptId?.let { workflowExecutor.execute(it) } as? WorkflowResult.Failure)?.error}") }
                     else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
                 }
                 workflowTriggeredDuringRecording = false
                 lastPartialTranscript = ""
+            } else {
+                Log.d(TAG, "   ↳ No workflow match or conversational_default, continuing to listen")
             }
         } catch (e: Exception) {
-            Log.d(TAG, "⚠ No workflow match for partial: \"$partialText\"")
+            Log.d(TAG, "⚠ No workflow match for partial: \"$partialText\" - ${e.message}")
         }
+    }
+    private fun classifyCommandTier(wordCount: Int, elapsedMs: Long): com.ambientai.core.workflow.CommandTier = when {
+        wordCount <= com.ambientai.core.workflow.RoutingConfig.INSTANT_COMMAND_MAX_WORDS && elapsedMs < 2000 -> com.ambientai.core.workflow.CommandTier.INSTANT
+        wordCount <= com.ambientai.core.workflow.RoutingConfig.QUICK_COMMAND_MAX_WORDS && elapsedMs < 3500 -> com.ambientai.core.workflow.CommandTier.QUICK
+        wordCount <= com.ambientai.core.workflow.RoutingConfig.COMPLEX_COMMAND_MAX_WORDS && elapsedMs < 6000 -> com.ambientai.core.workflow.CommandTier.COMPLEX
+        else -> com.ambientai.core.workflow.CommandTier.CONVERSATIONAL
     }
     private fun handleAudioSaved(filePath: String) {
         Log.d(TAG, "💾 AUDIO SAVED CALLBACK: $filePath")
         currentAudioFilePath = filePath
     }
     private fun handleRecordingStopped() = serviceScope.launch {
-        Log.d(TAG, "🔔 RECORDING STOPPED - Playing audible cue")
-        ttsService?.speak("stop")
+        Log.d(TAG, "🔔 RECORDING STOPPED")
+        audioFeedback?.playStopTone()
     }
     private fun handleTranscript(text: String) {
-        Log.d(TAG, "📝 TRANSCRIPT: \"$text\"")
+        val elapsed = if (recordingStartTime > 0) System.currentTimeMillis() - recordingStartTime else 0
+        Log.d(TAG, "📝 FINAL TRANSCRIPT [${elapsed}ms]: \"$text\" (${text.split("\\s+".toRegex()).size} words)")
         val audioPath = currentAudioFilePath ?: ""
         Transcript(text = text, audioFilePath = audioPath, timestamp = System.currentTimeMillis(), excludeFromContext = false).also { transcript ->
             transcriptRepository.save(transcript)
@@ -276,6 +338,11 @@ class VoiceListeningService : Service() {
     private fun handleTtsError(errorCode: Int) = Unit
     fun startQuickStartRecording(workflowId: Long) { pendingQuickStartWorkflowId = workflowId; updateNotification("Quick Start: Listening..."); deepgramStt?.start() }
     fun cancelQuickStart() { pendingQuickStartWorkflowId = null; deepgramStt?.stop(); currentAudioFilePath = null; updateNotification("Ready - Long press power button to speak") }
+    fun isRecording() = deepgramStt?.isRecording() == true
+    fun stopRecordingManually() {
+        Log.d(TAG, "⏹ MANUAL STOP (Volume Down pressed)")
+        deepgramStt?.stop()
+    }
     fun executeWorkflowDirectly(workflowId: Long, transcriptId: Long) = serviceScope.launch {
         try {
             Log.d(TAG, "🎯 DIRECT EXECUTION: workflowId=$workflowId, transcriptId=$transcriptId")
