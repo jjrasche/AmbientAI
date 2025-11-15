@@ -202,14 +202,17 @@ brave.searchApiKey=your_key_here
 ### Voice Pipeline Flow
 
 1. User long-presses power button → `VoiceListeningService.startListening()` triggered
-2. Music auto-pauses if playing
-3. `SpeechRecognizer` starts STT
-4. Transcript saved to DB → broadcast to UI
-5. `WorkflowRouter` matches transcript to workflow via trigger phrases
-6. `WorkflowExecutor` executes JSON workflow steps
-7. Actions handled by domain services (LLM, TTS, Task, Search, Music, etc.)
-8. `TextToSpeechService` speaks response
-9. Music auto-resumes with volume fade-in if it was playing before
+2. **Audio feedback**: Ascending start tone (800→1000Hz, 150ms) plays
+3. Music auto-pauses if playing
+4. `DeepgramSttService` starts STT streaming
+5. Partial transcripts → `WorkflowRouter` checks for early triggers (tier-based routing)
+6. Final transcript saved to DB → broadcast to UI
+7. **Audio feedback**: Descending stop tone (400→200Hz, 150ms) plays when recording stops
+8. `WorkflowRouter` matches transcript to workflow via trigger phrases
+9. `WorkflowExecutor` executes JSON workflow steps
+10. Actions handled by domain services (LLM, TTS, Task, Search, Music, etc.)
+11. `TextToSpeechService` speaks response
+12. Music auto-resumes with volume fade-in if it was playing before
 
 ### Workflow System
 
@@ -497,6 +500,59 @@ curl http://localhost:8080/api/transcripts?limit=5
 curl -X POST http://localhost:8080/api/workflow/trigger/play_music
 ```
 
+## Audio Feedback System
+
+**Purpose:** Provide subtle audio cues for recording start/stop without being intrusive.
+
+### Implementation (`AudioFeedbackService.kt`)
+
+**Start Tone:**
+- Ascending chirp: 800Hz → 1000Hz over 150ms
+- Plays immediately when recording starts
+- Indicates microphone is active
+
+**Stop Tone:**
+- Descending chirp: 400Hz → 200Hz over 150ms
+- Plays when `handleRecordingStopped()` callback fires
+- Indicates recording has ended
+
+**Tone Generation:**
+- Pure sine waves with amplitude fade-out
+- 30% initial amplitude, fades to 15% by end
+- 44.1kHz sample rate, 16-bit PCM
+- AudioTrack with USAGE_ASSISTANCE_SONIFICATION
+
+### Reliability Considerations
+
+**Stop tone WILL play in these scenarios:**
+- Normal workflow completion
+- User cancellation (e.g., says "stop")
+- Deepgram timeout or network error
+- Manual stop via notification button
+- VAD detects end of speech
+
+**Stop tone WON'T play (rare):**
+- Process killed by Android (low memory, force stop)
+- Native crash in Deepgram SDK
+- System shutdown/reboot
+- Hard JVM crash
+
+**Design rationale:** Simple tones are preferred over continuous ambient noise because:
+1. Less annoying if stop tone fails to play
+2. Clear indicators without background distraction
+3. Minimal battery impact
+4. No risk of leftover sound on crash
+
+### Manual Stop via Notification
+
+When recording is active, the foreground notification includes a "Stop" action button that works from:
+- Lock screen
+- Home screen
+- Other apps
+- Notification shade
+
+Implementation: `VoiceListeningService.createNotification()` adds action when `deepgramStt?.isRecording() == true`
+
 ## Common Tasks
 
 ### Adding a New Entity
@@ -540,3 +596,149 @@ curl -X POST http://localhost:8080/api/workflow/trigger/play_music
 ```
 
 Variables can reference: `$variable`, `$object.field`, `$array[0]`, `$nested.object.field`
+
+## Lyrics Semantic Search & Enrichment System
+
+### Overview
+
+The app enriches music library songs with lyrics from Genius API and creates semantic embeddings for intelligent search. Located at http://localhost:8080/lyrics for web UI.
+
+### Architecture
+
+**Key Components:**
+- `MediaEnrichmentService.kt` - Background enrichment orchestration
+- `SmartSegmenter.kt` - Lyrics segmentation and embedding generation
+- `TextEmbedder.kt` - TensorFlow Lite embedding model wrapper
+- `LyricsSemanticSearch.kt` - Semantic search via HNSW vector index
+- `EnrichmentCleanupService.kt` - Data cleanup and maintenance
+
+**Embedding Model:**
+- Model: Universal Sentence Encoder (MediaPipe official)
+- Dimensions: 100D (float32)
+- File: `app/src/main/assets/all_minilm_l6_v2.tflite` (6MB)
+- Vector Index: HNSW (Hierarchical Navigable Small World) via ObjectBox
+
+### Lyrics Segmentation Strategy
+
+**Multi-Level Semantic Segmentation** (`SmartSegmenter.kt:30`):
+
+1. **Clean metadata** - Remove Genius annotations (`[Verse]`, `[Chorus]`, contributor counts)
+2. **Split by verses** - Double newlines (`\n\n`) separate major sections
+3. **Split verses by lines** - Single newlines within each verse
+4. **Group lines semantically** - Cosine similarity < 0.7 threshold creates segment breaks
+5. **Filter tiny segments** - Must have > 2 words
+
+**Result:** Songs typically have 1-5 semantically coherent segments per song, each capturing distinct themes/imagery.
+
+**Example ("Purple Gas" by Zach Bryan):**
+- Segment 1: Philosophical opening about hills and pride (4 lines)
+- Segment 2: Rural imagery (fence wire, Fargo truck, rye bottle) (6 lines)
+- Segment 3: Chorus refrain about purple gas plates (2 lines)
+
+### Testing Lyrics Search
+
+**Web UI:** http://localhost:8080/lyrics
+
+**API Endpoint:**
+```bash
+curl -X POST http://localhost:8080/api/lyrics/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "small town rural farming life", "max_results": 5}'
+```
+
+**Test Queries That Work Well:**
+- "small town rural life" → Finds "Boons" (0.87 similarity)
+- "hope for better days" → Finds hopeful songs (0.91-0.93 similarity)
+- "late night bar drinking" → Finds "Whiskey Fever" (0.91 similarity)
+- "driving at night feeling free" → Finds driving-themed songs
+
+**Test Cases:** See `lyrics_search_test_cases.json` for 20 comprehensive test queries covering emotions, imagery, relationships, and abstract concepts.
+
+### Enrichment Management
+
+**Start/Stop Enrichment:**
+```bash
+# Start background enrichment (respects Genius API rate limits)
+curl -X POST http://localhost:8080/api/enrichment/start
+
+# Stop enrichment
+curl -X POST http://localhost:8080/api/enrichment/stop
+
+# Check status
+curl http://localhost:8080/api/enrichment/status
+```
+
+**Data Management:**
+```bash
+# Force delete all lyrics transcripts/segments (for re-enrichment)
+curl -X POST http://localhost:8080/api/enrichment/force_delete_lyrics
+
+# Fix segments with mediaId=0
+curl -X POST http://localhost:8080/api/enrichment/fix_mediaids
+
+# Clean bad embeddings (wrong dimensions, missing model tracking)
+curl -X POST http://localhost:8080/api/enrichment/cleanup
+
+# View all transcript data
+curl http://localhost:8080/api/media/transcripts
+```
+
+### Debugging Segmentation Issues
+
+**Check segmentation quality:**
+```bash
+# Get recent enrichment with segmentation details
+curl http://localhost:8080/api/media/transcripts | \
+  python -c "import json, sys; data=json.load(sys.stdin); \
+  lyrics=[t for t in data['transcripts'] if t['source']=='lyrics']; \
+  print(f'Total: {len(lyrics)} enriched songs'); \
+  print(f'Avg segments: {sum(t[\"segment_count\"] for t in lyrics)/len(lyrics):.1f}')"
+```
+
+**Watch enrichment logs:**
+```bash
+adb logcat -s SmartSegmenter:D MediaEnrichment:D
+```
+
+Look for:
+- `Topic shift: X verses → Y semantic segments` - Shows verse splitting
+- `Created X/Y lyrics segments with embeddings` - Confirms embedding generation
+- Embedding dimensions should be 100D
+- Model should be "Universal Sentence Encoder"
+
+**Common Issues:**
+1. **mediaId=0 errors** - Run `/api/enrichment/fix_mediaids` or re-enrich
+2. **Duplicate results** - Known issue with HNSW query, filter by unique segment IDs
+3. **Wrong segmentation** - Check Genius metadata cleaning (`cleanGeniusMetadata()`)
+4. **No results** - Verify segments have embeddings (`has_embedding: true`)
+
+### Enrichment Process Flow
+
+1. `MediaEnrichmentService` queries unenriched Media entities
+2. For each song, fetch lyrics from Genius API (rate limited: 2 requests/sec)
+3. `SmartSegmenter.segmentLyrics()` processes lyrics:
+   - Clean Genius metadata
+   - Split into verses (double newlines)
+   - For each verse: split by lines, group by semantic similarity
+   - Generate 100D embedding for each segment via `TextEmbedder`
+   - Save `TranscriptSegment` with embedding + model tracking
+4. HNSW index automatically built by ObjectBox for vector search
+5. `LyricsSemanticSearch.search()` embeds query and finds nearest neighbors
+
+**Rate Limiting:** Genius API allows ~100 requests/min. Enrichment takes ~2-3 seconds per song.
+
+### Embedding Model Tracking
+
+**Schema:** `TranscriptSegment.embeddingModel` field tracks which model generated embeddings.
+
+**Why:** Allows future model upgrades (e.g., to 384D or 768D models) without mixing incompatible embeddings.
+
+**Current:** All segments should have `embeddingModel: "Universal Sentence Encoder"` and 100 dimensions.
+
+### Known Limitations
+
+1. **Genius metadata pollution** - Some segments may still contain structure markers if Genius format changes
+2. **Short songs** - Songs under ~50 words may produce only 1 segment
+3. **Similarity threshold** - 0.7 cosine similarity may need tuning per genre/artist
+4. **No timing data** - Lyrics segments have `startMs=0, endMs=0` (no timestamps)
+5. **Duplicate segments** - Same segment ID can appear multiple times in search results (needs deduplication)

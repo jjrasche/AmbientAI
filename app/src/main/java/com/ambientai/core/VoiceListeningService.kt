@@ -47,6 +47,7 @@ class VoiceListeningService : Service() {
     @Inject lateinit var musicPlayerHandler: com.ambientai.core.music.MusicPlayerHandler
     @Inject lateinit var debugServer: com.ambientai.debug.DebugServer
     @Inject lateinit var workflowSeeder: com.ambientai.data.WorkflowSeeder
+    @Inject lateinit var mediaIntelligence: com.ambientai.core.media.MediaIntelligenceManager
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
@@ -130,6 +131,7 @@ class VoiceListeningService : Service() {
             if (!(ttsService?.initialize() ?: false)) return@launch
             deepgramStt = DeepgramSttService(applicationContext, ::handlePartialTranscript, ::handleTranscript, ::handleSttError, ::handleAudioSaved, ::handleRecordingStopped)
             if (!deepgramStt!!.initialize()) { Log.e(TAG, "✖ DEEPGRAM STT INIT FAILED"); return@launch }
+            mediaIntelligence.initialize()
             Log.d(TAG, "🔄 RESEEDING WORKFLOWS FROM CODE")
             workflowSeeder.reseedAll()
             reloadWorkflows()

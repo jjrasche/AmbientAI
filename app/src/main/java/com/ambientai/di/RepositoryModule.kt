@@ -57,4 +57,24 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindGoldenDatasetRepository(impl: GoldenDatasetRepository): IGoldenDatasetRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMediaRepository(impl: MediaRepository): IMediaRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMediaTranscriptRepository(impl: MediaTranscriptRepository): IMediaTranscriptRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTranscriptSegmentRepository(impl: TranscriptSegmentRepository): ITranscriptSegmentRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMediaNoteRepository(impl: MediaNoteRepository): IMediaNoteRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMediaPlaybackSessionRepository(impl: MediaPlaybackSessionRepository): IMediaPlaybackSessionRepository
 }

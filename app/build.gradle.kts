@@ -25,6 +25,7 @@ android {
         buildConfigField("String", "GROQ_API_KEY", "\"${properties.getProperty("groq.apiKey", "")}\"")
         buildConfigField("String", "BRAVE_SEARCH_API_KEY", "\"${properties.getProperty("brave.searchApiKey", "")}\"")
         buildConfigField("String", "DEEPGRAM_API_KEY", "\"${properties.getProperty("deepgram.apiKey", "")}\"")
+        buildConfigField("String", "GENIUS_API_TOKEN", "\"${properties.getProperty("genius.apiToken", "")}\"")
     }
 
     buildTypes {
@@ -49,6 +50,11 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -82,6 +88,13 @@ dependencies {
 
     // NanoHTTPD for debug HTTP server
     implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // YouTube downloader with yt-dlp
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.0")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.0")
+
+    // MediaPipe for on-device embeddings
+    implementation("com.google.mediapipe:tasks-text:0.10.14")
 
     testImplementation(libs.junit)
     testImplementation("io.mockk:mockk:1.13.8")

@@ -12,7 +12,14 @@
       "Bash(curl:*)",
       "Bash(adb logcat:*)",
       "Bash(python -m json.tool:*)",
-      "Bash(adb devices:*)"
+      "Bash(adb devices:*)",
+      "Bash(do sleep 2)",
+      "Bash(done)",
+      "WebFetch(domain:github.com)",
+      "Bash(python -c:*)",
+      "WebFetch(domain:discuss.ai.google.dev)",
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(printf:*)"
     ],
     "deny": [],
     "ask": []

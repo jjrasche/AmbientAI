@@ -20,6 +20,7 @@ class WorkflowSeeder @Inject constructor(
         seedReviewWorkflow()
         seedTimeWorkflows()
         seedMusicWorkflows()
+        seedMediaWorkflows()
 
         repo.save(WorkflowDefinition(
             name = "web_search",
@@ -354,6 +355,65 @@ class WorkflowSeeder @Inject constructor(
     {"action": "music.listAll", "output": "result"},
     {"action": "ui.showModal", "input": {"title": "Music Library (${'$'}result.totalSongs songs)", "message": "${'$'}result.songList"}},
     {"action": "tts.speak", "input": {"text": "${'$'}result.summary"}}
+  ]
+}""".trimIndent()
+        ))
+    }
+    private fun seedMediaWorkflows() {
+        repo.save(WorkflowDefinition(
+            name = "search_youtube",
+            enabled = true,
+            definition = """{
+  "triggers": ["search for", "find", "look up", "youtube"],
+  "requiresInput": true,
+  "steps": [
+    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the search query from the user's input. Remove phrases like 'search for', 'find', 'look up', 'on youtube', 'youtube', etc. Return ONLY the search query, nothing else.", "userPrompt": "${'$'}transcript", "temperature": 0.3, "maxTokens": 50}, "output": "query"},
+    {"action": "media.searchAndSelect", "input": {"query": "${'$'}query.response", "max_results": 5}, "output": "selected"},
+    {"action": "control.if", "condition": "${'$'}selected.success === true", "then": [
+      {"action": "media.download", "input": {"video_id": "${'$'}selected.video_id"}, "output": "downloaded"},
+      {"action": "control.if", "condition": "${'$'}downloaded.success === true", "then": [
+        {"action": "tts.speak", "input": {"text": "Downloaded ${'$'}downloaded.title"}}
+      ], "else": [
+        {"action": "tts.speak", "input": {"text": "Download failed: ${'$'}downloaded.error"}}
+      ]}
+    ], "else": [
+      {"action": "tts.speak", "input": {"text": "No video selected"}}
+    ]}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "download_media",
+            enabled = true,
+            definition = """{
+  "triggers": ["download"],
+  "requiresInput": true,
+  "steps": [
+    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the YouTube URL or video ID from the user's input. If it's a full URL, return it. If it's just a video ID, return it. Remove any explanatory text.", "userPrompt": "${'$'}transcript", "temperature": 0.1, "maxTokens": 100}, "output": "url"},
+    {"action": "media.download", "input": {"url": "${'$'}url.response"}, "output": "result"},
+    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
+      {"action": "tts.speak", "input": {"text": "Downloaded ${'$'}result.title"}}
+    ], "else": [
+      {"action": "tts.speak", "input": {"text": "Download failed: ${'$'}result.error"}}
+    ]}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "search_library",
+            enabled = true,
+            definition = """{
+  "triggers": ["find in library", "search library", "search my media", "what do I have"],
+  "requiresInput": true,
+  "steps": [
+    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the semantic search query from the user's input. Remove phrases like 'find in library', 'search library', etc. Return ONLY the search query that describes what they're looking for.", "userPrompt": "${'$'}transcript", "temperature": 0.3, "maxTokens": 50}, "output": "query"},
+    {"action": "media.searchLibrary", "input": {"query": "${'$'}query.response", "max_results": 5, "min_score": 0.3}, "output": "results"},
+    {"action": "control.if", "condition": "${'$'}results.success === true", "then": [
+      {"action": "llm.prompt", "input": {"systemPrompt": "Summarize the search results in a natural way. List the top matches with their titles. Be concise.", "userPrompt": "Query: ${'$'}results.query\n\nResults:\n${'$'}results.results", "temperature": 0.7, "maxTokens": 200}, "output": "summary"},
+      {"action": "tts.speak", "input": {"text": "${'$'}summary.response"}}
+    ], "else": [
+      {"action": "tts.speak", "input": {"text": "${'$'}results.error"}}
+    ]}
   ]
 }""".trimIndent()
         ))
