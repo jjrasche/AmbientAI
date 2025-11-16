@@ -19,6 +19,7 @@ class MediaHistoryRepository @Inject constructor(private val boxStore: BoxStore)
     override fun getById(id: Long) = box.get(id)
     override fun delete(id: Long) { box.remove(id) }
     override fun getAll() = box.query().order(MediaHistory_.timestamp, OrderFlags.DESCENDING).build().find()
+    override fun count() = box.count()
     override fun getByMediaType(mediaType: String) = box.query(MediaHistory_.mediaType.equal(mediaType)).order(MediaHistory_.timestamp, OrderFlags.DESCENDING).build().find()
     override fun getRecent(limit: Int) = box.query().order(MediaHistory_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())
     override fun getByTimeRange(startTime: Long, endTime: Long) = box.query().between(MediaHistory_.timestamp, startTime, endTime).order(MediaHistory_.timestamp, OrderFlags.DESCENDING).build().find()

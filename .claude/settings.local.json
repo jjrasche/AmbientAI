@@ -19,7 +19,14 @@
       "Bash(python -c:*)",
       "WebFetch(domain:discuss.ai.google.dev)",
       "WebFetch(domain:ai.google.dev)",
-      "Bash(printf:*)"
+      "Bash(printf:*)",
+      "Bash(for:*)",
+      "Bash(do curl -s -X DELETE http://localhost:8080/api/workflows/$id)",
+      "Bash(cat:*)",
+      "Bash(adb install:*)",
+      "WebFetch(domain:developers.deepgram.com)",
+      "WebFetch(domain:deepgram.com)",
+      "Bash(bash:*)"
     ],
     "deny": [],
     "ask": []

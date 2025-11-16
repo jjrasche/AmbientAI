@@ -1,6 +1,7 @@
 package com.ambientai.debug
 
 import android.util.Log
+import com.ambientai.testing.toJson
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
@@ -27,7 +28,10 @@ class DebugServer @Inject constructor(
     private val lyricsSearch: com.ambientai.core.media.LyricsSemanticSearch,
     private val enrichmentCleanup: com.ambientai.core.enrichment.EnrichmentCleanupService,
     private val mediaTranscriptRepo: com.ambientai.data.repositories.IMediaTranscriptRepository,
-    private val segmentRepo: com.ambientai.data.repositories.ITranscriptSegmentRepository
+    private val segmentRepo: com.ambientai.data.repositories.ITranscriptSegmentRepository,
+    private val regressionTestExecutor: com.ambientai.testing.RegressionTestExecutor,
+    private val regressionTestScenarios: com.ambientai.testing.RegressionTestScenarios,
+    private val actionExecRepo: com.ambientai.data.repositories.IActionExecutionRepository
 ) : NanoHTTPD(8080) {
 
     companion object {
@@ -69,6 +73,7 @@ class DebugServer @Inject constructor(
                 uri == "/api/ping" -> jsonResponse(JSONObject().apply { put("status", "pong") })
                 uri == "/api/workflows" -> handleWorkflows()
                 uri == "/api/workflows/reseed" && method == Method.POST -> handleReseedWorkflows()
+                uri.startsWith("/api/workflows/") && method == Method.DELETE -> handleDeleteWorkflow(uri)
                 uri == "/api/transcripts" -> handleTranscripts(session)
                 uri == "/api/media_history" -> handleMediaHistory(session)
                 uri == "/api/command" && method == Method.POST -> handleCommand(session)
@@ -99,6 +104,9 @@ class DebugServer @Inject constructor(
                 uri == "/api/music/import" && method == Method.POST -> handleMusicImport()
                 uri == "/api/media/transcripts" -> handleGetMediaTranscripts()
                 uri == "/api/lyrics/search" && method == Method.POST -> handleLyricsSearch(session)
+                uri == "/api/regression/run" && method == Method.POST -> handleRunRegressionTests()
+                uri == "/api/regression/scenarios" -> handleGetRegressionScenarios()
+                uri == "/api/debug/actions" -> handleGetRecentActions()
                 else -> notFoundResponse()
             }
         } catch (e: Exception) {
@@ -191,6 +199,16 @@ curl -X POST http://localhost:8080/api/lyrics/search -d '{"query":"heartbreak","
             put("workflows_before", countBefore)
             put("workflows_after", countAfter)
             put("message", "Workflows reseeded from code")
+        })
+    }
+    private fun handleDeleteWorkflow(uri: String): Response {
+        val id = uri.substringAfterLast("/").toLongOrNull() ?: return jsonResponse(JSONObject().apply { put("error", "Invalid workflow ID") })
+        val workflow = workflowRepo.getById(id) ?: return jsonResponse(JSONObject().apply { put("error", "Workflow not found") })
+        workflowRepo.delete(id)
+        return jsonResponse(JSONObject().apply {
+            put("status", "success")
+            put("deleted_id", id)
+            put("deleted_name", workflow.name)
         })
     }
 
@@ -407,5 +425,8 @@ Consider:
     private fun handleMusicImport(): Response = runCatching { Log.d(TAG, "🎵 Importing music library to Media entities..."); val result = musicLibraryImporter.importAllSongs(); jsonResponse(JSONObject().apply { put("success", true); put("total_songs", result.totalSongs); put("created", result.created); put("skipped", result.skipped); put("message", "Imported ${result.created} new songs (${result.skipped} already existed)") }) }.getOrElse { e -> Log.e(TAG, "handleMusicImport error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
     private fun handleGetMediaTranscripts(): Response = runCatching { Log.d(TAG, "📋 Getting all media transcripts..."); val allTranscripts = kotlinx.coroutines.runBlocking { mediaTranscriptRepo.getAll() }; val transcriptsJson = JSONArray(); allTranscripts.forEach { transcript -> val media = mediaRepo.getById(transcript.mediaId); val segments = segmentRepo.getByTranscriptId(transcript.id); transcriptsJson.put(JSONObject().apply { put("transcript_id", transcript.id); put("media_id", transcript.mediaId); put("source", transcript.source); put("fetched_at", transcript.fetchedAt); put("song_title", media?.title ?: "Unknown"); put("artist", media?.channelName ?: "Unknown"); put("segment_count", segments.size); put("has_embeddings", segments.any { it.embedding != null }); put("embedding_model", segments.firstOrNull()?.embeddingModel ?: "null"); put("segments", JSONArray().apply { segments.forEach { seg -> put(JSONObject().apply { put("segment_id", seg.id); put("text", seg.text); put("start_ms", seg.startMs); put("end_ms", seg.endMs); put("has_embedding", seg.embedding != null); put("embedding_dims", seg.embedding?.size ?: 0) }) } }) }) }; jsonResponse(JSONObject().apply { put("success", true); put("total_transcripts", transcriptsJson.length()); put("transcripts", transcriptsJson) }) }.getOrElse { e -> Log.e(TAG, "handleGetMediaTranscripts error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
     private fun handleLyricsSearch(session: IHTTPSession): Response = runCatching { val body = getRequestBody(session); val json = JSONObject(body); val query = json.getString("query"); val maxResults = json.optInt("max_results", 10); Log.d(TAG, "🎵 Searching lyrics: $query"); val results = kotlinx.coroutines.runBlocking { lyricsSearch.search(query, maxResults) }; val resultsJson = JSONArray(); results.forEach { match -> resultsJson.put(JSONObject().apply { put("media_id", match.media.id); put("title", match.media.title); put("artist", match.media.channelName); put("similarity", match.similarity); put("lyric_snippet", match.segment.text.take(200)); put("full_segment", match.segment.text) }) }; jsonResponse(JSONObject().apply { put("success", true); put("query", query); put("total_results", results.size); put("results", resultsJson) }) }.getOrElse { e -> Log.e(TAG, "handleLyricsSearch error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
+    private fun handleRunRegressionTests(): Response = runCatching { Log.d(TAG, "🧪 RUNNING REGRESSION TESTS"); val scenarios = regressionTestScenarios.getAllScenarios(); val results = kotlinx.coroutines.runBlocking { scenarios.map { scenario -> regressionTestExecutor.runTest(scenario) } }; val passedCount = results.count { it.passed }; val failedCount = results.count { !it.passed }; val resultsJson = JSONArray(); results.forEach { result -> resultsJson.put(JSONObject().apply { put("test_id", result.testId); put("passed", result.passed); put("duration_ms", result.durationMs); put("failures", JSONArray(result.failures)); put("details", JSONObject(result.details)) }) }; jsonResponse(JSONObject().apply { put("success", true); put("total_tests", scenarios.size); put("passed", passedCount); put("failed", failedCount); put("results", resultsJson); put("summary", "$passedCount/${scenarios.size} tests passed") }) }.getOrElse { e -> Log.e(TAG, "handleRunRegressionTests error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
+    private fun handleGetRegressionScenarios(): Response = runCatching { val scenarios = regressionTestScenarios.getAllScenarios(); val scenariosJson = JSONArray(); scenarios.forEach { scenario -> scenariosJson.put(scenario.toJson()) }; jsonResponse(JSONObject().apply { put("success", true); put("total_scenarios", scenarios.size); put("scenarios", scenariosJson) }) }.getOrElse { e -> Log.e(TAG, "handleGetRegressionScenarios error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
+    private fun handleGetRecentActions(): Response = runCatching { val actions = actionExecRepo.getRecent(20); val actionsJson = JSONArray(); actions.forEach { action -> actionsJson.put(JSONObject().apply { put("id", action.id); put("action_name", action.actionName); put("success", action.success); put("output_json", action.outputJson); put("input_json", action.inputJson); put("error", action.errorMessage ?: ""); put("latency_ms", action.latencyMs) }) }; jsonResponse(JSONObject().apply { put("success", true); put("total", actions.size); put("actions", actionsJson) }) }.getOrElse { e -> Log.e(TAG, "handleGetRecentActions error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
 }
 

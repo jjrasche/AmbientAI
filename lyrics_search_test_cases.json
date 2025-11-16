@@ -1,0 +1,144 @@
+{
+  "test_cases": [
+    {
+      "query": "heartbreak and losing someone you love",
+      "expected_themes": ["loss", "grief", "heartbreak", "relationships"],
+      "expected_songs": ["Heading South", "Condemned", "From a Lover's Point of View"],
+      "min_results": 3,
+      "description": "Should find songs about heartbreak and romantic loss"
+    },
+    {
+      "query": "driving on backroads at night feeling free",
+      "expected_themes": ["freedom", "night driving", "escape", "roads"],
+      "expected_songs": ["Driving", "Heading South", "Purple Gas"],
+      "min_results": 2,
+      "description": "Should find songs about night driving and freedom"
+    },
+    {
+      "query": "small town rural life and farming",
+      "expected_themes": ["rural", "countryside", "small town", "farming"],
+      "expected_songs": ["Purple Gas", "Boons", "Oak Island"],
+      "min_results": 2,
+      "description": "Should find songs with rural and farming imagery"
+    },
+    {
+      "query": "struggling with addiction and substance abuse",
+      "expected_themes": ["addiction", "drugs", "alcohol", "struggle"],
+      "expected_songs": ["Codeine Pills, Pt. 1", "Revival", "Cold Blooded"],
+      "min_results": 2,
+      "description": "Should find songs dealing with addiction themes"
+    },
+    {
+      "query": "hope for better days and optimism",
+      "expected_themes": ["hope", "optimism", "future", "better times"],
+      "expected_songs": ["Better Days", "Hopefully", "Revival"],
+      "min_results": 2,
+      "description": "Should find songs about hope and looking forward"
+    },
+    {
+      "query": "memories of youth and growing up",
+      "expected_themes": ["nostalgia", "childhood", "youth", "memories"],
+      "expected_songs": ["Pink Skies", "Summertime's Close", "A Boy Like You"],
+      "min_results": 2,
+      "description": "Should find songs about nostalgic memories"
+    },
+    {
+      "query": "feeling like an outsider or misfit",
+      "expected_themes": ["isolation", "different", "outcast", "misunderstood"],
+      "expected_songs": ["Messed Up Kid", "Funny Man", "Come as You Are"],
+      "min_results": 2,
+      "description": "Should find songs about feeling different or isolated"
+    },
+    {
+      "query": "late night at a bar drinking with friends",
+      "expected_themes": ["bar", "drinking", "nightlife", "friendship"],
+      "expected_songs": ["The Great American Bar Scene", "American Nights", "Fear and Fridays"],
+      "min_results": 2,
+      "description": "Should find songs about bar scenes and nightlife"
+    },
+    {
+      "query": "working hard and blue collar life",
+      "expected_themes": ["work", "labor", "working class", "effort"],
+      "expected_songs": ["Overtime", "Purple Gas", "Mechanical Bull"],
+      "min_results": 2,
+      "description": "Should find songs about working class experiences"
+    },
+    {
+      "query": "missing home and wanting to return",
+      "expected_themes": ["home", "homesick", "return", "belonging"],
+      "expected_songs": ["Heading South", "Oak Island", "The Way Back"],
+      "min_results": 2,
+      "description": "Should find songs about homesickness and belonging"
+    },
+    {
+      "query": "religious faith or spiritual struggle",
+      "expected_themes": ["faith", "religion", "spirituality", "God"],
+      "expected_songs": ["Holy Roller", "Revival", "Condemned"],
+      "min_results": 1,
+      "description": "Should find songs with religious or spiritual themes"
+    },
+    {
+      "query": "traveling and being on the road",
+      "expected_themes": ["travel", "journey", "movement", "wandering"],
+      "expected_songs": ["Hey Driver", "Driving", "Ticking"],
+      "min_results": 2,
+      "description": "Should find songs about traveling and journeys"
+    },
+    {
+      "query": "father son relationships and family",
+      "expected_themes": ["family", "father", "parent", "relationships"],
+      "expected_songs": ["Old Man", "Me and Mine", "28"],
+      "min_results": 1,
+      "description": "Should find songs about family relationships"
+    },
+    {
+      "query": "nature imagery with water rivers or ocean",
+      "expected_themes": ["nature", "water", "river", "ocean"],
+      "expected_songs": ["Bass Boat", "Bathwater", "Washington Lilacs"],
+      "min_results": 1,
+      "description": "Should find songs with water and nature imagery"
+    },
+    {
+      "query": "tough rough exterior but vulnerable inside",
+      "expected_themes": ["tough", "vulnerability", "facade", "masculine"],
+      "expected_songs": ["Cold Blooded", "Mechanical Bull", "Towers"],
+      "min_results": 1,
+      "description": "Should find songs contrasting toughness with vulnerability"
+    },
+    {
+      "query": "regret and wishing you could change the past",
+      "expected_themes": ["regret", "past", "mistakes", "what if"],
+      "expected_songs": ["From a Lover's Point of View", "The Way Back", "Don't Give Up on Me"],
+      "min_results": 2,
+      "description": "Should find songs about regret and past mistakes"
+    },
+    {
+      "query": "beautiful sunset or sunrise sky colors",
+      "expected_themes": ["sky", "sunset", "sunrise", "colors", "beauty"],
+      "expected_songs": ["Pink Skies", "Purple Gas", "Northern Thunder"],
+      "min_results": 1,
+      "description": "Should find songs with sky and color imagery"
+    },
+    {
+      "query": "leaving someone behind or saying goodbye",
+      "expected_themes": ["leaving", "goodbye", "departure", "separation"],
+      "expected_songs": ["Leaving", "Ticking", "East Side of Sorrow"],
+      "min_results": 2,
+      "description": "Should find songs about departures and goodbyes"
+    },
+    {
+      "query": "finding peace and acceptance",
+      "expected_themes": ["peace", "acceptance", "calm", "resolution"],
+      "expected_songs": ["Come as You Are", "Sandpaper", "Lucky Enough"],
+      "min_results": 1,
+      "description": "Should find songs about finding peace"
+    },
+    {
+      "query": "summer memories and warm weather nostalgia",
+      "expected_themes": ["summer", "warmth", "nostalgia", "seasons"],
+      "expected_songs": ["Summertime's Close", "Bass Boat", "Like Ida"],
+      "min_results": 1,
+      "description": "Should find songs about summer and warm memories"
+    }
+  ]
+}

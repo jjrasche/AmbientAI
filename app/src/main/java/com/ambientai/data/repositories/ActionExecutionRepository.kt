@@ -22,6 +22,7 @@ class ActionExecutionRepository @Inject constructor(
     override fun save(log: ActionExecution) = log.also { box.put(it) }
     override fun getById(id: Long) = box.get(id)
     override fun count() = box.count()
+    override fun getRecent(limit: Int) = box.query().order(ActionExecution_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())
     override fun countByActionName(actionName: String) = box.query(ActionExecution_.actionName.equal(actionName)).build().count()
     override fun getByWorkflowExecution(executionId: Long) =
         box.query(ActionExecution_.workflowExecutionId.equal(executionId)).order(ActionExecution_.stepIndex).build().find()

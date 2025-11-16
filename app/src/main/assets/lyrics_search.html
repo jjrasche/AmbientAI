@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🎵 Lyrics Search</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; background: #0d1117; color: #c9d1d9; }
+        h1 { color: #58a6ff; }
+        .search-box { display: flex; gap: 10px; margin: 30px 0; }
+        input[type="text"] { flex: 1; padding: 12px; font-size: 16px; border: 1px solid #30363d; border-radius: 6px; background: #161b22; color: #c9d1d9; }
+        button { padding: 12px 24px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #2ea043; }
+        .result { background: #161b22; border: 1px solid #30363d; padding: 20px; margin: 15px 0; border-radius: 6px; }
+        .result h3 { margin: 0 0 10px 0; color: #58a6ff; }
+        .similarity { background: #238636; color: white; padding: 4px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; }
+        .lyrics { background: #0d1117; padding: 15px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; font-family: monospace; font-size: 14px; line-height: 1.6; }
+        .no-results { text-align: center; padding: 40px; color: #8b949e; }
+        .loading { text-align: center; padding: 20px; color: #58a6ff; }
+        .status { background: #161b22; padding: 15px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #30363d; }
+        .status-label { color: #8b949e; font-size: 14px; }
+        .status-value { color: #58a6ff; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🎵 Semantic Lyrics Search</h1>
+    <div class="status" id="status">Loading status...</div>
+    <div class="search-box">
+        <input type="text" id="query" placeholder="Search for themes, emotions, or topics (e.g., 'heartbreak', 'happy memories', 'driving at night')" />
+        <button onclick="search()">Search</button>
+    </div>
+    <div id="results"></div>
+    <script>
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/enrichment/status');
+                const data = await res.json();
+                document.getElementById('status').innerHTML = `
+                    <span class="status-label">Enriched Songs:</span> <span class="status-value">${data.enriched_count}/${data.total_media}</span> &nbsp;|&nbsp;
+                    <span class="status-label">Embeddings:</span> <span class="status-value">100 dimensions (Universal Sentence Encoder)</span> &nbsp;|&nbsp;
+                    <span class="status-label">Status:</span> <span class="status-value">${data.is_running ? "Running" : "Idle"}</span>
+                `;
+            } catch(e) { console.error(e); }
+        }
+
+        async function search() {
+            const query = document.getElementById('query').value;
+            if (!query) return;
+
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="loading">🔍 Searching lyrics...</div>';
+
+            try {
+                const res = await fetch('/api/lyrics/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, max_results: 10 })
+                });
+                const data = await res.json();
+
+                if (data.success && data.results.length > 0) {
+                    resultsDiv.innerHTML = data.results.map(r => `
+                        <div class="result">
+                            <h3>${r.title} <span style="color: #8b949e; font-weight: normal;">by ${r.artist}</span></h3>
+                            <span class="similarity">${(r.similarity * 100).toFixed(1)}% match</span>
+                            <div class="lyrics">${r.full_segment}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    resultsDiv.innerHTML = '<div class="no-results">No matches found. Try a different query or wait for more songs to be enriched.</div>';
+                }
+            } catch(e) {
+                resultsDiv.innerHTML = '<div class="no-results">Error: ' + e.message + '</div>';
+            }
+        }
+
+        document.getElementById('query').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') search();
+        });
+
+        loadStatus();
+        setInterval(loadStatus, 10000);
+    </script>
+</body>
+</html>

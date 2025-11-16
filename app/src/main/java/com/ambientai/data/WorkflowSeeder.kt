@@ -20,58 +20,6 @@ class WorkflowSeeder @Inject constructor(
         seedReviewWorkflow()
         seedTimeWorkflows()
         seedMusicWorkflows()
-        seedMediaWorkflows()
-
-        repo.save(WorkflowDefinition(
-            name = "web_search",
-            enabled = true,
-            definition = """{
-  "triggers":["search for","look up"],
-  "requiresInput": true,
-  "steps":[
-    {"action":"llm.prompt","input":{
-      "systemPrompt":"Extract the search query from the user's input. Return ONLY the search query, nothing else. Remove phrases like 'search for', 'look up', etc.",
-      "userPrompt":"${'$'}transcript",
-      "temperature":0.3,
-      "maxTokens":50
-    },"output":"searchQuery"},
-    {"action":"search.query","input":{
-      "query":"${'$'}searchQuery.response",
-      "numResults":3
-    },"output":"searchResults"},
-    {"action":"llm.prompt","input":{
-      "systemPrompt":"You are a helpful assistant. Answer the user's question based on the search results provided. Be concise and cite sources when relevant.",
-      "userPrompt":"Question: ${'$'}transcript\n\nSearch Results:\n${'$'}searchResults.snippets",
-      "temperature":0.7,
-      "maxTokens":50
-    },"output":"answer"},
-    {"action":"tts.speak","input":{"text":"${'$'}answer.response"}}
-  ]
-}""".trimIndent()
-        ))
-
-        repo.save(WorkflowDefinition(
-            name = "remember_this",
-            enabled = true,
-            definition = """{
-  "triggers":["remember this","remember that","don't forget"],
-  "requiresInput": true,
-  "steps":[
-    {"action":"llm.prompt","input":{
-      "systemPrompt":"Extract what the user wants to remember. Return JSON: {\"memory\": \"what they want remembered\"}",
-      "userPrompt":"${'$'}transcript",
-      "temperature":0.3,
-      "maxTokens":100
-    },"output":"extracted"},
-    {"action":"log.write","input":{
-      "type":"memory",
-      "data":"${'$'}extracted.response",
-      "transcriptId":"${'$'}transcriptId"
-    },"output":"entry"},
-    {"action":"tts.speak","input":{"text":"Got it"}}
-  ]
-}""".trimIndent()
-        ))
     }
     private fun seedTaskWorkflows() {
         val llmPullNameFromTranscriptAction = """{"action":"llm.prompt","input":{"systemPrompt":"Extract task name from user input. Return only the task name, nothing else.","userPrompt":"${'$'}transcript"},"output":"taskName"},"""
@@ -259,8 +207,21 @@ class WorkflowSeeder @Inject constructor(
   },
   "requiresInput": true,
   "steps": [
-    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the song/artist name from the user's request. Remove words like 'play', 'music', etc. Return ONLY the artist or song name, nothing else.", "userPrompt": "${'$'}transcript", "temperature": 0.3, "maxTokens": 50}, "output": "query"},
-    {"action": "music.play", "input": {"query": "${'$'}query.response"}, "output": "result"}
+    {"action": "music.play", "input": {"query": "${'$'}transcript"}, "output": "musicResult"},
+    {"action": "control.if", "condition": "${'$'}musicResult.success === false", "then": [
+      {"action": "media.searchAndSelect", "input": {"query": "${'$'}transcript", "max_results": 5}, "output": "selected"},
+      {"action": "control.if", "condition": "${'$'}selected.success === true", "then": [
+        {"action": "media.download", "input": {"video_id": "${'$'}selected.video_id"}, "output": "downloaded"},
+        {"action": "control.if", "condition": "${'$'}downloaded.success === true", "then": [
+          {"action": "music.play", "input": {"query": "${'$'}downloaded.title"}, "output": "playResult"},
+          {"action": "tts.speak", "input": {"text": "Playing ${'$'}downloaded.title"}}
+        ], "else": [
+          {"action": "tts.speak", "input": {"text": "Download failed"}}
+        ]}
+      ], "else": [
+        {"action": "tts.speak", "input": {"text": "Not found"}}
+      ]}
+    ]}
   ]
 }""".trimIndent()
         ))
@@ -355,65 +316,6 @@ class WorkflowSeeder @Inject constructor(
     {"action": "music.listAll", "output": "result"},
     {"action": "ui.showModal", "input": {"title": "Music Library (${'$'}result.totalSongs songs)", "message": "${'$'}result.songList"}},
     {"action": "tts.speak", "input": {"text": "${'$'}result.summary"}}
-  ]
-}""".trimIndent()
-        ))
-    }
-    private fun seedMediaWorkflows() {
-        repo.save(WorkflowDefinition(
-            name = "search_youtube",
-            enabled = true,
-            definition = """{
-  "triggers": ["search for", "find", "look up", "youtube"],
-  "requiresInput": true,
-  "steps": [
-    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the search query from the user's input. Remove phrases like 'search for', 'find', 'look up', 'on youtube', 'youtube', etc. Return ONLY the search query, nothing else.", "userPrompt": "${'$'}transcript", "temperature": 0.3, "maxTokens": 50}, "output": "query"},
-    {"action": "media.searchAndSelect", "input": {"query": "${'$'}query.response", "max_results": 5}, "output": "selected"},
-    {"action": "control.if", "condition": "${'$'}selected.success === true", "then": [
-      {"action": "media.download", "input": {"video_id": "${'$'}selected.video_id"}, "output": "downloaded"},
-      {"action": "control.if", "condition": "${'$'}downloaded.success === true", "then": [
-        {"action": "tts.speak", "input": {"text": "Downloaded ${'$'}downloaded.title"}}
-      ], "else": [
-        {"action": "tts.speak", "input": {"text": "Download failed: ${'$'}downloaded.error"}}
-      ]}
-    ], "else": [
-      {"action": "tts.speak", "input": {"text": "No video selected"}}
-    ]}
-  ]
-}""".trimIndent()
-        ))
-        repo.save(WorkflowDefinition(
-            name = "download_media",
-            enabled = true,
-            definition = """{
-  "triggers": ["download"],
-  "requiresInput": true,
-  "steps": [
-    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the YouTube URL or video ID from the user's input. If it's a full URL, return it. If it's just a video ID, return it. Remove any explanatory text.", "userPrompt": "${'$'}transcript", "temperature": 0.1, "maxTokens": 100}, "output": "url"},
-    {"action": "media.download", "input": {"url": "${'$'}url.response"}, "output": "result"},
-    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
-      {"action": "tts.speak", "input": {"text": "Downloaded ${'$'}result.title"}}
-    ], "else": [
-      {"action": "tts.speak", "input": {"text": "Download failed: ${'$'}result.error"}}
-    ]}
-  ]
-}""".trimIndent()
-        ))
-        repo.save(WorkflowDefinition(
-            name = "search_library",
-            enabled = true,
-            definition = """{
-  "triggers": ["find in library", "search library", "search my media", "what do I have"],
-  "requiresInput": true,
-  "steps": [
-    {"action": "llm.prompt", "input": {"systemPrompt": "Extract the semantic search query from the user's input. Remove phrases like 'find in library', 'search library', etc. Return ONLY the search query that describes what they're looking for.", "userPrompt": "${'$'}transcript", "temperature": 0.3, "maxTokens": 50}, "output": "query"},
-    {"action": "media.searchLibrary", "input": {"query": "${'$'}query.response", "max_results": 5, "min_score": 0.3}, "output": "results"},
-    {"action": "control.if", "condition": "${'$'}results.success === true", "then": [
-      {"action": "llm.prompt", "input": {"systemPrompt": "Summarize the search results in a natural way. List the top matches with their titles. Be concise.", "userPrompt": "Query: ${'$'}results.query\n\nResults:\n${'$'}results.results", "temperature": 0.7, "maxTokens": 200}, "output": "summary"},
-      {"action": "tts.speak", "input": {"text": "${'$'}summary.response"}}
-    ], "else": [
-      {"action": "tts.speak", "input": {"text": "${'$'}results.error"}}
-    ]}
   ]
 }""".trimIndent()
         ))

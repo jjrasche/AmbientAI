@@ -69,7 +69,9 @@ class WorkflowExecutor @Inject constructor(
         Log.d(TAG, "  ↳ ACTION: $actionName")
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
+            Log.d(TAG, "    → Input: $resolvedInput")
             val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "music" -> if (actionName == "music.scan" || actionName == "music.search" || actionName == "music.listAll") musicScanner.execute(actionName, resolvedInput) else musicPlayer.execute(actionName, resolvedInput); "ui" -> if (actionName == "ui.awaitChoice") ui.executeAsync(actionName, resolvedInput) else ui.execute(actionName, resolvedInput); "media" -> mediaHandler.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
+            Log.d(TAG, "    → Output: $result")
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = System.currentTimeMillis()))
             Log.d(TAG, "    ✓ ACTION SUCCESS: $actionName (${System.currentTimeMillis() - startTime}ms)")

@@ -1,0 +1,1263 @@
+{
+  "success": true,
+  "total_transcripts": 37,
+  "transcripts": [
+    {
+      "transcript_id": 1,
+      "media_id": 1,
+      "source": "youtube_captions",
+      "fetched_at": 0,
+      "song_title": "But what is a neural network? | Deep learning chapter 1",
+      "artist": "3Blue1Brown",
+      "segment_count": 12,
+      "has_embeddings": true,
+      "embedding_model": "null",
+      "segments": [
+        {
+          "segment_id": 1,
+          "text": "",
+          "start_ms": 0,
+          "end_ms": 67000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 2,
+          "text": "",
+          "start_ms": 67000,
+          "end_ms": 162000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 3,
+          "text": "",
+          "start_ms": 162000,
+          "end_ms": 215000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 4,
+          "text": "",
+          "start_ms": 215000,
+          "end_ms": 331000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 5,
+          "text": "",
+          "start_ms": 331000,
+          "end_ms": 518000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 6,
+          "text": "",
+          "start_ms": 518000,
+          "end_ms": 694000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 7,
+          "text": "",
+          "start_ms": 694000,
+          "end_ms": 750000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 8,
+          "text": "",
+          "start_ms": 750000,
+          "end_ms": 806000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 9,
+          "text": "",
+          "start_ms": 806000,
+          "end_ms": 917000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 10,
+          "text": "",
+          "start_ms": 917000,
+          "end_ms": 987000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 11,
+          "text": "",
+          "start_ms": 987000,
+          "end_ms": 1023000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 12,
+          "text": "",
+          "start_ms": 1023000,
+          "end_ms": 1121000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 2,
+      "media_id": 2,
+      "source": "youtube_captions",
+      "fetched_at": 0,
+      "song_title": "But what is a neural network? | Deep learning chapter 1",
+      "artist": "3Blue1Brown",
+      "segment_count": 12,
+      "has_embeddings": true,
+      "embedding_model": "null",
+      "segments": [
+        {
+          "segment_id": 13,
+          "text": "[Music] This is a three. It's sloppily written and rendered at an extremely low resolution of 28x 28 pixels. But your brain has no trouble recognizing it as a three. And I want you to take a moment to appreciate how crazy it is that brains can do this so effortlessly. I mean this, this, and this are also recognizable as threes. Even though the specific values of each pixel is very different from one image to the next, the particular light sensitive cells in your eye that are firing when you see this three are very different from the ones firing when you see this three. But something in that crazy smart visual cortex of yours resolves these as representing the same idea while at the same time recognizing other images as their own distinct ideas. But if I told you, hey, sit down and write for me a program that takes in a grid of 28x 28 pixels like this and outputs a single number between 0 and 10, telling you what it thinks the digit is. While the",
+          "start_ms": 0,
+          "end_ms": 67000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 14,
+          "text": "living under a rock, I think I hardly need to motivate the relevance and importance of machine learning and neural networks to the present and to the future. But what I want to do here is show you what a neural network actually is, assuming no background, and to help visualize what it's doing, not as a buzzword, but as a piece of math. My hope is just that you come away feeling like the structure itself is motivated and to feel like you know what it means when you read or you hear about a neural network, quote unquote, learning. This video is just going to be devoted to the structure component of that. And the following one is going to tackle learning. What we're going to do is put together a neural network that can learn to recognize handwritten digits. This is a somewhat classic example for introducing the topic. And I'm happy to stick with the status quo here because at the end of the two videos, I want to point you to a couple good resources where you can learn more and where you can download the code that does this and play with it on your own computer. There are many many variants of neural networks and in recent years there's been sort of a boom in research towards these variants. But in these two introductory videos, you and I are just going to look at the simplest plain vanilla form with no added frills. This is kind of a necessary prerequisite for understanding any of the more powerful modern variants. And trust me, it still has plenty of complexity for us to wrap our minds around. But even in this simplest form, it can learn to recognize handwritten digits, which is a pretty cool thing for a computer to be able to do. And at the same time, you'll see how",
+          "start_ms": 67000,
+          "end_ms": 162000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 15,
+          "text": "As the name suggests, neural networks are inspired by the brain. But let's break that down. What are the neurons, and in what sense are they linked together? Right now, when I say neuron, all I want you to think about is a thing that holds a number. specifically a number between zero and one. It's really not more than that. For example, the network starts with a bunch of neurons corresponding to each of the 28 * 28 pixels of the input image, which is 784 neurons in total. Each one of these holds a number that represents the grayscale value of the corresponding pixel, ranging from zero for black pixels up to one for white pixels. This number inside the neuron is called its activation. And the image you might have in mind here is that each",
+          "start_ms": 162000,
+          "end_ms": 215000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 16,
+          "text": "So all of these 784 neurons make up the first layer of our network. Now jumping over to the last layer. This has 10 neurons each representing one of the digits. The activation in these neurons, again, some number that's between 0 and 1, represents how much the system thinks that a given image corresponds with a given digit. There's also a couple layers in between called the hidden layers, which for the time being should just be a giant question mark for how on earth this process of recognizing digits is going to be handled. In this network, I chose two hidden layers, each one with 16 neurons. And admittedly, that's kind of an arbitrary choice to be honest. I chose two layers based on how I want to motivate the structure in just a moment. And 16, well, that was just a nice number to fit on the screen. In practice, there is a lot of room for experiment with a specific structure here. The way the network operates, activations in one layer determine the activations of the next layer. And of course, the heart of the network as an information processing mechanism comes down to exactly how those activations from one layer bring about activations in the next layer. It's meant to be loosely analogous to how in biological networks of neurons, some groups of neurons firing cause certain others to fire. Now, the network I'm showing here has already been trained to recognize digits. And let me show you what I mean by that. It means if you feed in an image lighting up all 784 neurons of the input layer according to the brightness of each pixel in the image, that pattern of activations causes some very specific pattern in the next layer, which causes some pattern in the one after it, which finally gives some pattern in the output layer. And the brightest neuron of that output layer is the network's choice, so",
+          "start_ms": 215000,
+          "end_ms": 331000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 17,
+          "text": "And before jumping into the math for how one layer influences the next or how training works, let's just talk about why it's even reasonable to expect a layered structure like this to behave intelligently. What are we expecting here? What is the best hope for what those middle layers might be doing? Well, when you or I recognize digits, we piece together various components. A 9 has a loop up top and a line on the right. An eight also has a loop up top, but it's paired with another loop down low. A four basically breaks down into three specific lines and things like that. Now, in a perfect world, we might hope that each neuron in the second to last layer corresponds with one of these subcomponents. That anytime you feed in an image with, say, a loop up top, like a 9 or an 8, there's some specific neuron whose activation is going to be close to one. And I don't mean this specific loop of pixels. The hope would be that any generally loopy pattern towards the top sets off this neuron. That way, going from the third layer to the last one just requires learning which combination of subcomponents corresponds to which digits. Of course, that just kicks the problem down the road because how would you recognize these subcomponents or even learn what the right subcomponents should be? And I still haven't even talked about how one layer influences the next. But run with me on this one for a moment. Recognizing a loop can also break down into subpros. One reasonable way to do this would be to first recognize the various little edges that make it up. Similarly, a long line like the kind you might see in the digits 1 or four or seven. Well, that's really just a long edge. Or maybe you think of it as a certain pattern of several smaller edges. So maybe our hope is that each neuron in the second layer of the network corresponds with the various relevant little edges. Maybe when an image like this one comes in, it lights up all of the neurons associated with around 8 to 10 specific little edges, which in turn lights up the neurons associated with the upper loop and a long vertical line, and those light up the neuron associated with a nine. Whether or not this is what our final network actually does is another question, one that I'll come back to once we see how to train the network. But this is a hope that we might have a sort of goal with the layered structure like this. Moreover, you can imagine how being able to detect edges and patterns like this would be really useful for other image recognition tasks. And even beyond image recognition, there are all sorts of intelligent things you might want to do that break down into layers of abstraction. Parsing speech, for example, involves taking raw audio and picking out distinct sounds which combine to make certain syllables, which combine to form words, which combine to make up phrases and more abstract thoughts, etc. But getting back to how any of this actually works, picture yourself right now designing how exactly the activations in one layer might determine the activations in the next. The goal is to have some mechanism that",
+          "start_ms": 331000,
+          "end_ms": 518000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 18,
+          "text": "into digits. And to zoom in on one very specific example, let's say the hope is for one particular neuron in the second layer to pick up on whether or not the image has an edge in this region here. The question at hand is what parameters should the network have? What dials and knobs should you be able to tweak so that it's expressive enough to potentially capture this pattern or any other pixel pattern or the pattern that several edges can make a loop and other such things. Well, what we'll do is assign a weight to each one of the connections between our neuron and the neurons from the first layer. These weights are just numbers. Then take all of those activations from the first layer and compute their weighted sum according to these weights. I find it helpful to think of these weights as being organized into a little grid of their own. And I'm going to use green pixels to indicate positive weights and red pixels to indicate negative weights where the brightness of that pixel is some loose depiction of the weights value. Now, if we made the weights associated with almost all of the pixels zero, except for some positive weights in this region that we care about, then taking the weighted sum of all the pixel values really just amounts to adding up the values of the pixel just in the region that we care about. And if you really wanted to pick up on whether there's an edge here, what you might do is have some negative weights associated with the surrounding pixels. Then the sum is largest when those middle pixels are bright but the surrounding pixels are darker. When you compute a weighted sum like this, you might come out with any number. But for this network, what we want is for activations to be some value between 0 and 1. So a common thing to do is to pump this weighted sum into some function that squishes the real number line into the range between 0 and 1. And a common function that does this is called the sigmoid function, also known as a logistic curve. Basically, very negative inputs end up close to zero, very positive inputs end up close to one, and it just steadily increases around the input zero. So, the activation of the neuron here is basically a measure of how positive the relevant weighted sum is. But maybe it's not that you want the neuron to light up when the weighted sum is bigger than zero. Maybe you only want it to be active when the sum is bigger than say 10. That is you want some bias for it to be inactive. What we'll do then is just add in some other number like -10 to this weighted sum before plugging it through the sigmoid squishification function. That additional number is called the bias. So the weights tell you what pixel pattern this neuron in the second layer is picking up on and the bias tells you how",
+          "start_ms": 518000,
+          "end_ms": 694000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 19,
+          "text": "active. And that is just one neuron. Every other neuron in this layer is going to be connected to all 784 pixel neurons from the first layer. And each one of those 784 connections has its own weight associated with it. Also, each one has some bias, some other number that you add on to the weighted sum before squishing it with the sigmoid. And that's a lot to think about. With this hidden layer of 16 neurons, that's a total of 784* 16 weights along with 16 biases. And all of that is just the connections from the first layer to the second. The connections between the other layers also have a bunch of weights and biases associated with them. All said and done, this network has almost exactly 13,000 total weights and biases. 13,000 knobs and dials that can be tweaked and turned",
+          "start_ms": 694000,
+          "end_ms": 750000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 20,
+          "text": "what that's referring to is getting the computer to find a valid setting for all of these many, many numbers so that it'll actually solve the problem at hand. One thought experiment that is at once fun and kind of horrifying is to imagine sitting down and setting all of these weights and biases by hand, purposefully tweaking the numbers so that the second layer picks up on edges, the third layer picks up on patterns, etc. I personally find this satisfying rather than just treating the network as a total black box. Because when the network doesn't perform the way you anticipate, if you've built up a little bit of a relationship with what those weights and biases actually mean, you have a starting place for experimenting with how to change the structure to improve or when the network does work, but not for the reasons you might expect. Digging into what the weights and biases are doing is a good way to challenge",
+          "start_ms": 750000,
+          "end_ms": 806000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 21,
+          "text": "way, the actual function here is a little cumbersome to write down, don't you think? So, let me show you a more notationally compact way that these connections are represented. This is how you'd see it if you choose to read up more about neural networks. Organize all of the activations from one layer into a column as a vector. Then, organize all of the weights as a matrix where each row of that matrix corresponds to the connections between one layer and a particular neuron in the next layer. What that means is that taking the weighted sum of the activations in the first layer according to these weights corresponds to one of the terms in the matrix vector product of everything we have on the left here. By the way, so much of machine learning just comes down to having a good grasp of linear algebra. So for any of you who want a nice visual understanding for matrices and what matrix vector multiplication means, take a look at the series I did on linear algebra, especially chapter 3. Back to our expression, instead of talking about adding the bias to each one of these values independently, we represent it by organizing all those biases into a vector and adding the entire vector to the previous matrix vector product. Then as a final step, I'll wrap a sigmoid around the outside here. And what that's supposed to represent is that you're going to apply the sigmoid function to each specific component of the resulting vector inside. So once you write down this weight matrix and these vectors as their own symbols, you can communicate the full transition of activations from one layer to the next in an extremely tight and neat little expression. And this makes the relevant code both a lot simpler and a lot faster since many libraries optimize the heck out of matrix",
+          "start_ms": 806000,
+          "end_ms": 917000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 22,
+          "text": "how earlier I said these neurons are simply things that hold numbers? Well, of course, the specific numbers that they hold depends on the image you feed in. So, it's actually more accurate to think of each neuron as a function. One that takes in the outputs of all the neurons in the previous layer and spits out a number between 0 and 1. Really, the entire network is just a function. one that takes in 784 numbers as an input and spits out 10 numbers as an output. It's an absurdly complicated function, one that involves 13,000 parameters in the forms of these weights and biases that pick up on certain patterns and which involves iterating many matrix vector products and the sigmoid squishification function. But it's just a function nonetheless. And in a way, it's kind of reassuring that it looks complicated. I mean, if it were any simpler, what hope would we have that it could take on the challenge of recognizing digits? And how does it take on that challenge? How does this network learn the appropriate weights and biases just by looking at data? Well, that's what I'll show in the next video. And I'll also dig a little more into what",
+          "start_ms": 917000,
+          "end_ms": 987000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 23,
+          "text": "Now is the point I suppose I should say subscribe to stay notified about when that video or any new videos come out. But realistically, most of you don't actually receive notifications from YouTube, do you? Maybe more honestly, I should say subscribe so that the neural networks that underly YouTube's recommendation algorithm are primed to believe that you want to see content from this channel get recommended to you. Anyway, stay posted for more. Thank you very much to everyone supporting these videos on Patreon. I've been a little slow to progress in the probability series this summer, but I'm jumping back into it after this project.",
+          "start_ms": 987000,
+          "end_ms": 1023000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 24,
+          "text": "To close things off here, I have with me Leysa Lee, who did her PhD work on the theoretical side of deep learning and who currently works at a venture capital firm called Amplify Partners, who kindly provided some of the funding for this video. So, Leysa, one thing I think we should quickly bring up is this sigmoid function. As I understand it, early networks used this to squish the relevant weighted sum into that interval between 0 and one. You know, kind of motivated by this biological analogy of neurons either being inactive or active. Exactly. But relatively few modern networks actually use sigmoid anymore. That's kind of old school, right? Yeah. Or rather, relu seems to be much easier to train. And relu relu stands for rectified linear unit. Yes. It's this kind of function where you're just taking a max of zero and a where a is given by what you were explaining in the video. And what this was sort of motivated from, I think, was a partially by a biological analogy with how neurons would either be activated or not. And so if it passes a certain threshold, it would be the identity function, but if it did not, then it would just not be activated. So be zero. So it's kind of a simplification. Using sigmoids didn't help training or it was very difficult to train at at some point. and people just tried ReLU and it happened to work very well for these incredibly um deep uh neural networks. All right, thank you Alicia. [Music]",
+          "start_ms": 1023000,
+          "end_ms": 1121000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 3,
+      "media_id": 3,
+      "source": "youtube_captions",
+      "fetched_at": 0,
+      "song_title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+      "artist": "Rick Astley",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "null",
+      "segments": [
+        {
+          "segment_id": 25,
+          "text": "[Music] We're no strangers to love. You know the rules and so do I. I feel commitments from what I'm thinking of. You wouldn't get this from any other guy. I just want to tell you how I'm feeling. Got to make you understand. Never going to give you up. I'm going to let you down. I'm going to run around and desert you. I'm going to make you say goodbye. Tell a lie and hurt you. We've known each other for so long. Your heart's been aching, but you're too shy to say we don't know what's been going on. We know the game and we're going to play. If you ask me how I'm feeling, don't tell me your truth. to see. I will give you around you. I will say goodbye and hurt you. I will give [Music] you around you. I will leave you. I will say goodbye and hurt you. Never going to give. Never going to give. Never going to give. Never going to give. We've known each other for so long. Your heart's been aching, but you're too shy to say it. We both know what's been going on. We know the game and we're going to play it. I just want to tell you how I'm feeling. Got to make you understand. Never going to give you up. Never going to let you down. Never going to run around and desert you. Heat. [Music] Heat. Heat. Heat. [Music] Never going to tell a lie and hurt you. Never going to give you up. Never going to let you down. Never going to run around and desert you. Never going to make you cry. Never going to say goodbye. Never going to say goodbye.",
+          "start_ms": 320,
+          "end_ms": 211879,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 4,
+      "media_id": 4,
+      "source": "youtube_captions",
+      "fetched_at": 0,
+      "song_title": "Me at the zoo",
+      "artist": "jawed",
+      "segment_count": 3,
+      "has_embeddings": true,
+      "embedding_model": "null",
+      "segments": [
+        {
+          "segment_id": 26,
+          "text": "All right, so here we are, in front of the\nelephants",
+          "start_ms": 0,
+          "end_ms": 5000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 27,
+          "text": "the cool thing about these guys is that they\nhave really... really really long trunks and that's cool (baaaaaaaaaaahhh!!)",
+          "start_ms": 5000,
+          "end_ms": 17000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 28,
+          "text": "",
+          "start_ms": 17000,
+          "end_ms": 19000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 5,
+      "media_id": 5,
+      "source": "youtube_captions",
+      "fetched_at": 0,
+      "song_title": "PSY - GANGNAM STYLE(강남스타일) M\/V",
+      "artist": "officialpsy",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "null",
+      "segments": [
+        {
+          "segment_id": 29,
+          "text": "open gam star gam [Music] star [Music] good know hey I don't [Music] know hey sexy lady hey sexy [Music] lady [Music] know know hey [Music] he sexy lady star hey sexy lady [Music] baby [Music] baby baby baby hey [Music] seated [Music] star openam star",
+          "start_ms": 10000,
+          "end_ms": 254159,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 6,
+      "media_id": 6,
+      "source": "youtube_captions",
+      "fetched_at": 0,
+      "song_title": "Me at the zoo",
+      "artist": "jawed",
+      "segment_count": 3,
+      "has_embeddings": true,
+      "embedding_model": "null",
+      "segments": [
+        {
+          "segment_id": 30,
+          "text": "All right, so here we are, in front of the\nelephants",
+          "start_ms": 0,
+          "end_ms": 5000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 31,
+          "text": "the cool thing about these guys is that they\nhave really... really really long trunks and that's cool (baaaaaaaaaaahhh!!)",
+          "start_ms": 5000,
+          "end_ms": 17000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 32,
+          "text": "",
+          "start_ms": 17000,
+          "end_ms": 19000,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 7,
+      "media_id": 7,
+      "source": "youtube_captions",
+      "fetched_at": 0,
+      "song_title": "Short Guided Meditation: Arriving in Mindful Presence with Tara Brach",
+      "artist": "Tara Brach",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "null",
+      "segments": [
+        {
+          "segment_id": 33,
+          "text": "[Music] thank you coming into Stillness and feeling the Simplicity of your body breathing taking a nice full deep in-breath now extending the in-breath filling the chest and the lungs and a slow out breath feeling the sensations of releasing the breath relaxing outward letting go and again breathing in filling the chest and the lungs and the slow out breath releasing letting go letting go one more time inhaling deeply filling the chest in the lungs a slow out breath relaxing outward letting go and allowing the breath now to resume in its natural rhythm relaxing with the inflow and with the outflow beginning to gently scan down the body relaxing the brow letting it be smooth softening the eyes letting the jaw unhinge relaxing the tongue down to the root letting the shoulders fall away from the neck and then feeling the shoulders from the inside out sensing a dissolving sensation ice to water and water to gas letting the hands rest in an easy and effortless way softening the hands feeling From the Inside Out the play of sensation there letting the chest be open the heart relaxed sensing an openness to the chest softening the belly letting this next breath be received in a softening belly this breath and now this one relaxing deep in the Torso feeling the length the volume of the legs feeling the sensations inside of the feet and then widening the lens to sense this whole body as a field of sensation including the arising and passing of sound listening to and feeling the whole moment-to-moment experience sensing in a relaxed and gentle way the movement of the breath this background of aliveness resting in an awake and relaxed presence [Music]",
+          "start_ms": 940,
+          "end_ms": 263850,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 164,
+      "media_id": 535,
+      "source": "lyrics",
+      "fetched_at": 1763181178894,
+      "song_title": "Smaller Acts",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 323,
+          "text": "There ain't no love a boy can find\nYou'll feel her in a room if you was blind\nThere ain't a thing a man can do\nShe'll only love you for you",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 324,
+          "text": "There ain't no love a man can find\nYou'll feel her in a room if you was blind\nThere ain't a thing a man can do\nShe'll only love you for you",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 165,
+      "media_id": 536,
+      "source": "lyrics",
+      "fetched_at": 1763181184061,
+      "song_title": "Oklahoman Son",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 325,
+          "text": "You can't hide where you're from\nWith nightcrawler blood on your castin' thumb\nYou can fight and fiend and sell your guns\nBut you'll always be the Oklahoman son\nYou'll always been the Oklahoman son",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 326,
+          "text": "You can't hide where you're from\nWith nightcrawler blood on your castin' thumb\nYou can fight and fiend and sell your guns\nBut you'll always be the Oklahoman son\nYou'll always be the Oklahoman son",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 166,
+      "media_id": 532,
+      "source": "lyrics",
+      "fetched_at": 1763181189753,
+      "song_title": "Tourniquet",
+      "artist": "Zach Bryan",
+      "segment_count": 3,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 327,
+          "text": "I bandage up your body and your bones and your bad days too\nTake care of the blood that your love runs through\nI know all the damage that some days in this dark world does\nYou were laughin' last evenin' at somethin’ I dreamed of",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 328,
+          "text": "I bandage up your body and your bones and your bad days too\nTake care of the blood that your love runs through\nI know all the damage that some days in this dark world does\nShe were laughin' last evenin' at somethin' I dreamed of",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 329,
+          "text": "There's delays on the planes out of Eastern Montana\nWhere you told me you were leavin' from\nYou've been stabbed in the back and the rest of your body\nWon't you tell me where you're bleedin' from?",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 167,
+      "media_id": 533,
+      "source": "lyrics",
+      "fetched_at": 1763181194882,
+      "song_title": "Spotless",
+      "artist": "Zach Bryan",
+      "segment_count": 4,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 330,
+          "text": "Remember jumpin' in the pool when we was fully clothed in August?\nWe were soakin', chokin', smokin' in my old shitty apartment\nThen they cut off all the lights 'cause the bills were never paid\nWe were stealing all the power from the neighbors on vacation",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 331,
+          "text": "I ain't spotless, neither is you\nFor once in my life, I'm gonna see it through\nIf you want spotless, I'll always lose\nYou gave me your love, lover, you gave me the truth",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 332,
+          "text": "I was alone\nYou were bettin' on a loser, you were calling my bluff\nHolding one another, is it never enough?\nYou were right there with me",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 333,
+          "text": "I can't stop this, neither can you\nFor once in my life, I'm down to see it through\nIf you want spotless, I'll always lose\nYou gave me your love, lover, you gave me the truth",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 168,
+      "media_id": 534,
+      "source": "lyrics",
+      "fetched_at": 1763181200384,
+      "song_title": "Tradesman",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 334,
+          "text": "If you wanna trade, I'd say it's a hard earned mile\nWanna sweat like hell, throw a hammer down\nAnd know the old feelin' of a five o'clock smile\nAnd know I didn't take no easy way out",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 335,
+          "text": "Everyone lately's scarin' me\nIt's all backdoor deals and therapy\nThe only callous I've grown is in my mind",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 169,
+      "media_id": 529,
+      "source": "lyrics",
+      "fetched_at": 1763181205313,
+      "song_title": "Jake''s Piano \/ Long Island",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 336,
+          "text": "I heard your father got sick on Long Island\nI've been tryin' like hell to call\nMy mind ain't well and I just can't tell you why\nI heard they shut down the old bar we'd go to when we needed rest\nWe'd always stay out too late Tuesday nights",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 337,
+          "text": "I heard your father got sick on Long Island\nI've been tryin' like hell to call\nMy mind ain't well and I just can't tell you why\nI heard they shut down the old bar we'd go to when we needed rest\nWe'd always stay out too late Tuesday nights",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 170,
+      "media_id": 530,
+      "source": "lyrics",
+      "fetched_at": 1763181210831,
+      "song_title": "El Dorado",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 338,
+          "text": "In El Dorado, hell if I know if you're still alive\nThere's a note in the glove box of your drive\nEl Dorado, hell if they know the difference in a hero\nAnd a man I wish was still by my side\nYou're in every last memory alive",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 339,
+          "text": "And I called last week to talk to my favorite old devil dog\nThey told me he had finally headed home",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 171,
+      "media_id": 531,
+      "source": "lyrics",
+      "fetched_at": 1763181216145,
+      "song_title": "I Remember Everything",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 340,
+          "text": "A cold shoulder at closing time\nYou were beggin' me to stay 'til the sun rose\nStrange words come on out\nOf a grown man's mouth when his mind's broke\nPictures and passin' time\nYou only smile like that when you're drinkin'\nI wish I didn't, but I do\nRemember every moment on the nights with you\nCold shoulder at closing time\nYou were beggin' me to stay 'til the sun rose\nStrange words come on out\nOf a grown man's mouth when his mind's broke\nPictures and passin' time\nYou only smile like that when you're drinkin'\nI wish I didn't, but I do\nRemember every moment on the nights with you",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 341,
+          "text": "Rotgut whiskey's gonna ease my mind\nBeach towel rests on the dryin' line\nDo I remind you of your daddy in my '88 Ford?\nLabrador hangin' out the passenger door",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 172,
+      "media_id": 527,
+      "source": "lyrics",
+      "fetched_at": 1763181221899,
+      "song_title": "Ticking",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 342,
+          "text": "There's wheels runnin' down the interstate\nBut, Lord, I'll wait another day, 'cause I ain't close to you\nThere's time tickin' on the interstate\nI'm fightin' fate\nAnd, Lord, I hate that I ain't close to you",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 343,
+          "text": "I'm cuttin' ties with things that bind my heart to this world\nI love you and I'm willing, but I cannot keep you, girl\nPhilly by the morning and Ohio by the night\nThe thing about high hopes is you can't hold on too tight",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 173,
+      "media_id": 528,
+      "source": "lyrics",
+      "fetched_at": 1763181227222,
+      "song_title": "Holy Roller",
+      "artist": "Zach Bryan",
+      "segment_count": 3,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 344,
+          "text": "And you're grinnin' like a vandal\nAfter swiggin' on a handle of Tito's\nLord, I didn't plan this\nI'm just goin' as far as the wind blows\nCoastlines to the flatlands\nGet your rich hands out of our plans\nI ain't ever been a holy roller\nBut I found God in your eyes",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 345,
+          "text": "Comin' down and comin' up\nThere's a place for good rest on the river's edge, darlin'\nAnd I know home's not far from here\nFrom sundown to sun up\nThere's a place for good love in my warm arms, honey\nAnd I found God in your eyes, dear",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 346,
+          "text": "I ain't never been a holy roller\nBut I found God in your eyes\nThe greens and browns remind me\nOf a mountainside\nAll the days that are to come\nAnd all the bad shit that I've done\nI ain't ever been a holy roller\nBut I found God in your eyes",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 174,
+      "media_id": 524,
+      "source": "lyrics",
+      "fetched_at": 1763181233149,
+      "song_title": "East Side of Sorrow",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 347,
+          "text": "Heard your brother lost his mind in the city last fall\nWas it his blood, or his conscience, or the alcohol?\nDid the Navy do him well or did he wind up sick\nLike every other brave boy from these run down sticks?\nDo you ever get tired of singin' songs\nLike all your pain is just another fuckin' sing along?\nIf you ever get the time come on home\nI heard Turnpike's back together and they're writin' songs",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 348,
+          "text": "He said the sun's gonna rise tomorrow\nSomewhere on the east side of sorrow\nYou better pack your bags west\nStick out your chest\nAnd then hit the road\nThe sun's gonna rise tomorrow\nSomewhere on the east side of sorrow\nDon't give it a reason to follow\nLet it be, then let it go\nLet it be, then let it go",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 175,
+      "media_id": 525,
+      "source": "lyrics",
+      "fetched_at": 1763181238861,
+      "song_title": "Hey Driver",
+      "artist": "Zach Bryan",
+      "segment_count": 4,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 349,
+          "text": "So take me down a road that's a little bit windy\nTo a place they still put sugar in their iced tea\nWhere the women are fine and the love is fair\nHey, driver, you can drop me off anywhere\nHey, driver, you can drop me off anywhere",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 350,
+          "text": "Hey, driver, I've been feelin'\nLike there's no point at all\nThe Klonopin ain't kicked in\nAnd I missed my sister's call\nHey, driver, I'm so tired\nOf the ways of this old world\nJust drive until the tires melt\nWe'll come back when it's healed (Oh)",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 351,
+          "text": "So take me down a road that's a little bit windy\nTo a place they still put sugar in their iced tea\nWhere the women are fine and the love is fair\nHey, driver, you can drop me off anywhere\nHey, driver, you can drop me off anywhere\nMichael Trotter, Jr\nHey, driver, you can drop me off anywhere",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 352,
+          "text": "So take me down a road that's a little bit windy\nTo a place they still put sugar in their iced tea\nWhere the women are fine and the love is fair\nHey, driver, you can drop me off anywhere\nHey, driver, you can drop me off anywhere\nHey, driver, you can drop me off anywhere\nHey, driver, you can drop me off anywhere",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 176,
+      "media_id": 526,
+      "source": "lyrics",
+      "fetched_at": 1763181245110,
+      "song_title": "Fear and Fridays",
+      "artist": "Zach Bryan",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 353,
+          "text": "I got a fear, dear, that it's gonna end\nWon't you get angry at me, say you love me again?\nI got a fear, dear, that it's a Friday spark\nYou only love me like you mean it when it's after dark",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 177,
+      "media_id": 521,
+      "source": "lyrics",
+      "fetched_at": 1763181249937,
+      "song_title": "Bathwater",
+      "artist": "Zach Bryan",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 354,
+          "text": "And I ain't heard \"Shakе the Frost\"\nIn a couple years or morе",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 178,
+      "media_id": 522,
+      "source": "lyrics",
+      "fetched_at": 1763181254849,
+      "song_title": "Overtime",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 355,
+          "text": "No matter who you know, no matter what you do\nI'll become what I deserve when it's all through\nAnd you'll be there asking yourself why",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 356,
+          "text": "So hold on tight\n'Cause I'll be working overtime\nThey told me that I couldn't and I shouldn't even try\nEver since I was a child, been workin' for a while, overtime",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 179,
+      "media_id": 523,
+      "source": "lyrics",
+      "fetched_at": 1763181260618,
+      "song_title": "Summertime''s Close",
+      "artist": "Zach Bryan",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 357,
+          "text": "And the law don't ever come back here and I reckon they don't try\nI just put some beer on ice and tonight I'm dancin' for two",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 180,
+      "media_id": 519,
+      "source": "lyrics",
+      "fetched_at": 1763181265287,
+      "song_title": "Funny Man",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 358,
+          "text": "And it was cold, but I's warmer than I'd ever been\nI'll get old, but I wish was younger then\nI reckon God's gotta be a funny man, I do\n'Cause I got you",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 359,
+          "text": "You know the time goes\nRight out the window\nAnd our hearts\nThey beat on borrowed time\nSo pack the car while the creek's runnin'\nWe'll cast a line with the dawn comin'\nYou know I wanna believe in somethin'\nSomethin' like you",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 181,
+      "media_id": 520,
+      "source": "lyrics",
+      "fetched_at": 1763181270658,
+      "song_title": "Pink Skies",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 360,
+          "text": "If you could see 'em now, you'd be proud\nBut you'd think they's yuppies\nYour funeral was beautiful\nI bet God heard you comin'",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 361,
+          "text": "The kids are in town for a funeral\nSo pack the car and dry your eyes\nI know they got plenty of young blood left in 'em\nAnd plenty nights under pink skies you taught 'em to enjoy",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 182,
+      "media_id": 516,
+      "source": "lyrics",
+      "fetched_at": 1763181276169,
+      "song_title": "Towers",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 362,
+          "text": "It's a long road to heaven (Long road)\nIt's a far drop to hell\nI pray we outlive this fountain\nI reckon only time can tell\nThe stronger folks keep goin'\nNo matter where they've been (No matter where they've been)\nThere are lights on sparklin' towers\nThat I'll never see again",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 363,
+          "text": "Do you think God's a person or is He just the sound\nOf early mornin' creakin''on some floors way out of town?\nI'm breathin' in a life and my legs are workin' fine\nDo you think God's a person or the slowly passin' time?",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 183,
+      "media_id": 517,
+      "source": "lyrics",
+      "fetched_at": 1763181281469,
+      "song_title": "Sandpaper",
+      "artist": "Zach Bryan",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 364,
+          "text": "Take a trip uptown to clear you out of my mind\nYou're like sandpaper; the more I try, you bind\nWinter was a drag, but spring was a friend\nI'll love you 'til the summer comes back again\nAnd they've been tryin' to smooth me out\nFor twenty-seven seasons now\nFor twenty-seven seasons now\nFor twenty-seven seasons now",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 184,
+      "media_id": 518,
+      "source": "lyrics",
+      "fetched_at": 1763181286396,
+      "song_title": "Northern Thunder",
+      "artist": "Zach Bryan",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 365,
+          "text": "Lovesick, homesick, sick of the road too\nThere's a reason all them boys back when sang the blues",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 185,
+      "media_id": 513,
+      "source": "lyrics",
+      "fetched_at": 1763181291298,
+      "song_title": "Like Ida",
+      "artist": "Zach Bryan",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 366,
+          "text": "So roll where you're rollin'\nI'll be prayin' you're fine\nWherever you're goin'\nStay walkin' that line\n'Cause they'll eat and they'll spit ya'\nBut you ain't their fool\nThey don't know ya' like ida\nBack home on barstools\nSo roll where you're rollin'\nI'll be prayin' you're fine\nWherever you're goin'\nStay walkin' that line\n'Cause they'll eat and they'll spit ya'\nBut you ain't their fool\nThey don't know ya' like ida\nBelly-laughin' on stools",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 186,
+      "media_id": 514,
+      "source": "lyrics",
+      "fetched_at": 1763181297051,
+      "song_title": "Bass Boat",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 367,
+          "text": "And you're goin', goin', goin'\nOn Thanksgiving Day when\nYou're sneakin' off to drink some alcohol\nAnd you'll show them, show them, show them\nWhile you're kissin' all the knees of\nEvery scrape and every bloody fall",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 368,
+          "text": "My old man bought a big bass boat\nWhen I think of that summer of hope, I choke\n'Cause even if we didn't catch a little bit of somethin'\nWe'd park that boat by the bluff at the day's end",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 187,
+      "media_id": 515,
+      "source": "lyrics",
+      "fetched_at": 1763181302377,
+      "song_title": "Better Days",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 369,
+          "text": "So don't get hateful, Lord, hot damn\nThere's a fire burnin' in the back forty\nI’m still findin' out who the hell I am\nAnd I'm so tired of wasting it away\nGonna find the time to realize\nI'm in deep on better days",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 370,
+          "text": "So don't get hateful, Lord, hot damn\nThere's a fire burnin' in the back forty\nAnd they're tryin' to change the man I am\nAnd I'm so tired of wastin' it away\nGonna find the time to realize\nI'm in deep on better days\nGonna find the time to realize\nI'm in deep on better days",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 188,
+      "media_id": 510,
+      "source": "lyrics",
+      "fetched_at": 1763181307479,
+      "song_title": "Boons",
+      "artist": "Zach Bryan",
+      "segment_count": 4,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 371,
+          "text": "And how I miss the Quick Stop line\nThey say hello every time\nNo concern for politics\nCome on home, I'll check for ticks\nLove me gently in the boons",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 372,
+          "text": "And why does everyone I know\nHave somewhere else to go?\nWon't you look up from your hands?\nLet's be still while we still can\nStay a while out in the boons",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 373,
+          "text": "So leave me out of that talk downtown\nI have found everything I'll ever need\nReal deep\nIn the boons",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 374,
+          "text": "Let me die out in the boons\nIt took me thirteen years to bloom\nI'm beat up, but I'm alright\nI'll be in town 'til late tonight\nJust dyin' in the boons",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 189,
+      "media_id": 511,
+      "source": "lyrics",
+      "fetched_at": 1763181313435,
+      "song_title": "The Way Back",
+      "artist": "Zach Bryan",
+      "segment_count": 3,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 375,
+          "text": "But love's gonna bring you home\nEven God didn't see it comin'\nBut no matter where you're at\nWe'll always find the way back\nWe'll always find the way back\nWe’ll always find the way back",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 376,
+          "text": "Baseball in the fall with a worn glove\nThe leaves might change, but the roots stuck\nThem shoes still hang on the top wire\nI’d say \"I don't miss you,\" but I hate a liar",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 377,
+          "text": "Saw you in my dreams last night\nYou had a vandal grin framed by a suit and tie\nTokin' poison to some Killers song\nYour old man's Trans-Am in Kodachrome\nYour old man's Trans-Am in Kodachrome\nYour old man's Trans-Am in Kodachrome",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 190,
+      "media_id": 512,
+      "source": "lyrics",
+      "fetched_at": 1763181319180,
+      "song_title": "Memphis; The Blues",
+      "artist": "Zach Bryan",
+      "segment_count": 3,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 378,
+          "text": "I need you like Memphis the blues\nI need you like Memphis the blues",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 379,
+          "text": "I need you like Memphis the blues\nI need you like Memphis the blues\nI need you like Memphis the blues\nI need you like Memphis the blues",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 380,
+          "text": "Yeah, we should just\nFuck, yeah, I'm in",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 191,
+      "media_id": 507,
+      "source": "lyrics",
+      "fetched_at": 1763181324483,
+      "song_title": "American Nights",
+      "artist": "Zach Bryan",
+      "segment_count": 2,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 381,
+          "text": "Wet, hot, American nights\nShake your body off under coastline light\nWet, hot, American nights\nWe snuck our Fords to the shore and drank a bottle bone-dry\nWe snuck our Fords to the shore and drank a bottle bone-dry",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 382,
+          "text": "Screen door cracked with the ball game on\nMan on the porch singin' baritone\nTan line leads to that gentle place\nBetween her collarbone and her stone-cold face",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 192,
+      "media_id": 508,
+      "source": "lyrics",
+      "fetched_at": 1763181329805,
+      "song_title": "Oak Island",
+      "artist": "Zach Bryan",
+      "segment_count": 1,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 383,
+          "text": "But if I find 'em on that island first\nThe worst is yet to come\n'Cause no blood in the mud we's raised in\nSpent life on the run",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    },
+    {
+      "transcript_id": 193,
+      "media_id": 509,
+      "source": "lyrics",
+      "fetched_at": 1763181334829,
+      "song_title": "Purple Gas",
+      "artist": "Zach Bryan",
+      "segment_count": 3,
+      "has_embeddings": true,
+      "embedding_model": "Universal Sentence Encoder",
+      "segments": [
+        {
+          "segment_id": 384,
+          "text": "And if I weren't a flatland boy, I'd say I have a hill\nA hill that I will die upon if the climb don't get me killed\nIf there were such heights around here for a guy to lay his pride\nMaybe I'd rest before I died if I weren't a flatland boy\nIf I weren't a flatland boy",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 385,
+          "text": "Retired rail ties, point-nine wire\nNeighbor kid on the fencin' pliers\nFargo that turns over fine\nAt forty below if you cuss it right\nA sly thumb of rye sometimes\nKeep a bottle hid with the Bio-Mycin\nYou can dull the edge, you can look ahead\nBut can't get there, it goes on forever\nOh, it just goes on forever\nYou keep your head down, it goes on forever",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        },
+        {
+          "segment_id": 386,
+          "text": "But I've got plates for purple gas\nI've got plates for purple gas",
+          "start_ms": 0,
+          "end_ms": 0,
+          "has_embedding": true,
+          "embedding_dims": 100
+        }
+      ]
+    }
+  ]
+}

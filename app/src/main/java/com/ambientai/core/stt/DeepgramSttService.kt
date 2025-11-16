@@ -25,6 +25,7 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
     private var recordingJob: Job? = null
     private var vadTimeoutJob: Job? = null
     private var currentTranscript = StringBuilder()
+    private var lastPartialTranscript = ""
     private var lastSpeechTime = 0L
     private var audioBuffer = mutableListOf<ByteArray>()
     private var audioFilePath: String? = null
@@ -35,7 +36,7 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         private const val SAMPLE_RATE = 16000
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-        private const val VAD_TIMEOUT_MS = 10000L
+        private const val VAD_TIMEOUT_MS = 8000L
         private const val DEEPGRAM_URL = "wss://api.deepgram.com/v1/listen"
         const val ERROR_PERMISSION = 9
         const val ERROR_AUDIO_RECORD = 10
@@ -48,6 +49,7 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         recordingStartTime = System.currentTimeMillis()
         Log.d(TAG, "▶ DEEPGRAM STT STARTED at $recordingStartTime")
         currentTranscript.clear()
+        lastPartialTranscript = ""
         audioBuffer.clear()
         lastSpeechTime = System.currentTimeMillis()
         audioFilePath = File(context.filesDir, "audio_${System.currentTimeMillis()}.wav").absolutePath
@@ -58,7 +60,8 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
     }
     fun stop() {
         if (!isRecording) return
-        Log.d(TAG, "■ DEEPGRAM STT STOPPED")
+        Log.d(TAG, "■ DEEPGRAM STT STOPPED (manual)")
+        val text = currentTranscript.toString().trim()
         isRecording = false
         vadTimeoutJob?.cancel()
         recordingJob?.cancel()
@@ -69,12 +72,16 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         webSocket = null
         saveAudioFile()
         onRecordingStopped()
+        if (text.isNotEmpty()) {
+            Log.d(TAG, "✓ STT FINAL (manual stop): \"$text\"")
+            onTranscriptReady(text)
+        }
     }
     fun cleanup() = stop()
     private fun startWebSocket() {
         val apiKey = BuildConfig.DEEPGRAM_API_KEY
         if (apiKey.isBlank()) { Log.e(TAG, "✖ DEEPGRAM API KEY NOT SET"); onRecognitionError(ERROR_WEBSOCKET); return }
-        val request = Request.Builder().url("$DEEPGRAM_URL?encoding=linear16&sample_rate=$SAMPLE_RATE&channels=1&interim_results=true&vad_events=true&endpointing=300").addHeader("Authorization", "Token $apiKey").build()
+        val request = Request.Builder().url("$DEEPGRAM_URL?model=nova-2-conversationalai&encoding=linear16&sample_rate=$SAMPLE_RATE&channels=1&interim_results=true&vad_events=true&endpointing=300").addHeader("Authorization", "Token $apiKey").build()
         webSocket = OkHttpClient().newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) { Log.d(TAG, "🔌 WebSocket CONNECTED") }
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -91,8 +98,10 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
                                 lastSpeechTime = System.currentTimeMillis()
                                 if (isFinal) {
                                     currentTranscript.append(transcript).append(" ")
+                                    lastPartialTranscript = ""
                                     Log.d(TAG, "✓ FINAL CHUNK [${elapsed}ms]: \"$transcript\"")
                                 } else {
+                                    lastPartialTranscript = transcript
                                     Log.d(TAG, "   PARTIAL [${elapsed}ms]: \"$transcript\"")
                                     onPartialTranscript(currentTranscript.toString() + transcript)
                                 }
@@ -147,7 +156,8 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
     }
     private fun finalizeTranscript() {
         if (!isRecording) return
-        val text = currentTranscript.toString().trim()
+        val finalText = currentTranscript.toString().trim()
+        val text = if (finalText.isEmpty()) lastPartialTranscript else finalText
         stop()
         if (text.isNotEmpty()) {
             Log.d(TAG, "✓ STT FINAL RESULT: \"$text\"")

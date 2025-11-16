@@ -13,6 +13,7 @@ interface IWorkflowExecutionRepository {
     // Queries
     fun getAll(): List<WorkflowExecution>
     fun count(): Long
+    fun getRecent(limit: Int): List<WorkflowExecution>
     fun getByWorkflowId(workflowId: Long): List<WorkflowExecution>
     fun getActionsForExecution(executionId: Long): List<ActionExecution>
 

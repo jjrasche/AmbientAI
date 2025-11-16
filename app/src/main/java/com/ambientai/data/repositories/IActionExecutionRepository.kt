@@ -11,6 +11,7 @@ interface IActionExecutionRepository {
 
     // Queries
     fun count(): Long
+    fun getRecent(limit: Int): List<ActionExecution>
     fun countByActionName(actionName: String): Long
     fun getByWorkflowExecution(executionId: Long): List<ActionExecution>
     fun getByActionName(actionName: String): List<ActionExecution>

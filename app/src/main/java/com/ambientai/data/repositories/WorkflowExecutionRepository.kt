@@ -27,6 +27,7 @@ class WorkflowExecutionRepository @Inject constructor(
     override fun getActionsForExecution(executionId: Long) = actionBox.query(ActionExecution_.workflowExecutionId.equal(executionId)).build().find()
     override fun getAll() = executionBox.all
     override fun count() = executionBox.count()
+    override fun getRecent(limit: Int) = executionBox.query().order(WorkflowExecution_.timestamp, OrderFlags.DESCENDING).build().find(0, limit.toLong())
     override fun getByWorkflowId(workflowId: Long) = executionBox.query(WorkflowExecution_.workflowId.equal(workflowId)).build().find()
     override fun deleteAll() = executionBox.removeAll().also { actionBox.removeAll() }
     override fun getAllExecutions(): Flow<List<WorkflowExecution>> = callbackFlow {

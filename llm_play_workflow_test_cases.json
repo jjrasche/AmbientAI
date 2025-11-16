@@ -1,0 +1,302 @@
+{
+  "test_cases": [
+    {
+      "id": 1,
+      "transcript": "play Noah Kahan",
+      "expected_intent": {
+        "content_type": "artist",
+        "query_specificity": "exact",
+        "artist": "Noah Kahan",
+        "title": null,
+        "semantic_query": "Noah Kahan music songs",
+        "needs_recency": false,
+        "reasoning": "User wants to hear artist Noah Kahan"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "Stick Season - Noah Kahan", "score": 0.94}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "excellent",
+        "best_match_id": 1,
+        "confidence": 0.94,
+        "should_search_youtube": false,
+        "reasoning": "Exact artist match with high semantic similarity"
+      },
+      "expected_action": "play_immediately",
+      "expected_tts": "Playing Stick Season by Noah Kahan"
+    },
+    {
+      "id": 2,
+      "transcript": "play Taylor Swift's newest album",
+      "expected_intent": {
+        "content_type": "album",
+        "query_specificity": "partial",
+        "artist": "Taylor Swift",
+        "title": null,
+        "semantic_query": "Taylor Swift latest newest album recent",
+        "needs_recency": true,
+        "reasoning": "User wants most recent album from Taylor Swift"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "1989 - Taylor Swift", "score": 0.82, "year": 2014}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "good",
+        "best_match_id": null,
+        "confidence": 0.4,
+        "should_search_youtube": true,
+        "reasoning": "Library has Taylor Swift but not newest album (1989 is from 2014, user wants latest)"
+      },
+      "expected_action": "search_youtube_and_offer_choice",
+      "expected_tts": "I found 1989 from 2014 in your library. Searching YouTube for newer albums..."
+    },
+    {
+      "id": 3,
+      "transcript": "play Stick Season album",
+      "expected_intent": {
+        "content_type": "album",
+        "query_specificity": "exact",
+        "artist": null,
+        "title": "Stick Season",
+        "semantic_query": "Stick Season album Noah Kahan",
+        "needs_recency": false,
+        "reasoning": "User wants specific album 'Stick Season'"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "Dial Drunk - Noah Kahan", "score": 0.45}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "poor",
+        "best_match_id": null,
+        "confidence": 0.3,
+        "should_search_youtube": true,
+        "reasoning": "User wants full album but library only has one song from that artist, not the album itself"
+      },
+      "expected_action": "search_youtube",
+      "expected_tts": "Searching YouTube for Stick Season album..."
+    },
+    {
+      "id": 4,
+      "transcript": "play Stick Season song",
+      "expected_intent": {
+        "content_type": "song",
+        "query_specificity": "exact",
+        "artist": null,
+        "title": "Stick Season",
+        "semantic_query": "Stick Season song Noah Kahan",
+        "needs_recency": false,
+        "reasoning": "User wants specific song titled 'Stick Season'"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "Stick Season - Noah Kahan", "score": 0.96}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "excellent",
+        "best_match_id": 1,
+        "confidence": 0.96,
+        "should_search_youtube": false,
+        "reasoning": "Exact song match with very high semantic similarity"
+      },
+      "expected_action": "play_immediately",
+      "expected_tts": "Playing Stick Season by Noah Kahan"
+    },
+    {
+      "id": 5,
+      "transcript": "play something that will teach me about how LLMs work at a statistical level",
+      "expected_intent": {
+        "content_type": "educational",
+        "query_specificity": "vague",
+        "artist": null,
+        "title": null,
+        "semantic_query": "language models statistics mathematics probability machine learning transformers",
+        "needs_recency": false,
+        "reasoning": "User wants educational content about LLM statistics and math"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "Neural Networks Explained - 3Blue1Brown", "score": 0.68}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "good",
+        "best_match_id": 1,
+        "confidence": 0.6,
+        "should_search_youtube": true,
+        "reasoning": "Library has related neural network content but not specifically about LLM statistics. Should offer choice between library result and more specific YouTube search"
+      },
+      "expected_action": "search_youtube_and_offer_choice",
+      "expected_tts": "I found Neural Networks Explained in your library. Searching YouTube for content specifically about LLM statistics..."
+    },
+    {
+      "id": 6,
+      "transcript": "play that video I heard last week that involved how tomatoes should be picked",
+      "expected_intent": {
+        "content_type": "specific_memory",
+        "query_specificity": "vague",
+        "artist": null,
+        "title": null,
+        "semantic_query": "tomatoes picking harvesting agriculture farming techniques",
+        "needs_recency": true,
+        "reasoning": "User recalls specific video about tomato harvesting from recent playback history"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "The Science of Tomato Harvesting - Agriculture Explained", "score": 0.83, "last_played": "7 days ago"}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "excellent",
+        "best_match_id": 1,
+        "confidence": 0.85,
+        "should_search_youtube": false,
+        "reasoning": "Strong semantic match to specific memory, played recently (last week), high confidence this is what user wants"
+      },
+      "expected_action": "play_immediately",
+      "expected_tts": "Playing The Science of Tomato Harvesting"
+    },
+    {
+      "id": 7,
+      "transcript": "play an episode of Matt Shane's Secret Podcast that I haven't heard yet",
+      "expected_intent": {
+        "content_type": "podcast",
+        "query_specificity": "partial",
+        "artist": "Matt Shane",
+        "title": "Secret Podcast",
+        "semantic_query": "Matt Shane Secret Podcast episode",
+        "needs_recency": true,
+        "reasoning": "User wants unheard episode from specific podcast series"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "Matt Shane's Secret Podcast Ep 142", "score": 0.92, "played": false},
+          {"title": "Matt Shane's Secret Podcast Ep 141", "score": 0.91, "played": true},
+          {"title": "Matt Shane's Secret Podcast Ep 140", "score": 0.90, "played": true}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "excellent",
+        "best_match_id": 1,
+        "confidence": 0.95,
+        "should_search_youtube": false,
+        "reasoning": "Found unheard episode (Ep 142) matching podcast series with high semantic similarity"
+      },
+      "expected_action": "play_immediately",
+      "expected_tts": "Playing Matt Shane's Secret Podcast Episode 142"
+    },
+    {
+      "id": 8,
+      "transcript": "play it safe",
+      "expected_intent": {
+        "content_type": "not_media",
+        "query_specificity": "n/a",
+        "artist": null,
+        "title": null,
+        "semantic_query": null,
+        "needs_recency": false,
+        "reasoning": "This is an idiom, not a media playback request"
+      },
+      "library_context": {
+        "has_content": false,
+        "results": []
+      },
+      "expected_match_eval": null,
+      "expected_action": "do_not_trigger_workflow",
+      "expected_tts": null
+    },
+    {
+      "id": 9,
+      "transcript": "I need to play with my kids later",
+      "expected_intent": {
+        "content_type": "not_media",
+        "query_specificity": "n/a",
+        "artist": null,
+        "title": null,
+        "semantic_query": null,
+        "needs_recency": false,
+        "reasoning": "This refers to playing as an activity with children, not media playback"
+      },
+      "library_context": {
+        "has_content": false,
+        "results": []
+      },
+      "expected_match_eval": null,
+      "expected_action": "do_not_trigger_workflow",
+      "expected_tts": null
+    },
+    {
+      "id": 10,
+      "transcript": "play some chill background music",
+      "expected_intent": {
+        "content_type": "music",
+        "query_specificity": "vague",
+        "artist": null,
+        "title": null,
+        "semantic_query": "chill relaxing background ambient music instrumental",
+        "needs_recency": false,
+        "reasoning": "User wants relaxing background music, no specific artist or song"
+      },
+      "library_context": {
+        "has_content": true,
+        "results": [
+          {"title": "Lofi Hip Hop Beats - Chill Study Music", "score": 0.79},
+          {"title": "Rain Sounds for Sleep - 10 Hours", "score": 0.62}
+        ]
+      },
+      "expected_match_eval": {
+        "match_quality": "good",
+        "best_match_id": 1,
+        "confidence": 0.75,
+        "should_search_youtube": false,
+        "reasoning": "Library has good match for chill background music (lofi beats), score is decent, should play this"
+      },
+      "expected_action": "play_immediately",
+      "expected_tts": "Playing Lofi Hip Hop Beats"
+    }
+  ],
+  "test_instructions": {
+    "step_1_intent_analysis": {
+      "action": "llm.prompt",
+      "system_prompt": "Analyze the user's play request. Return ONLY valid JSON with no markdown fences or additional text.\n\nIf the request is NOT about playing media/audio/video content (e.g., idioms like 'play it safe', activities like 'play with kids'), return: {\"content_type\": \"not_media\", \"query_specificity\": \"n/a\", \"artist\": null, \"title\": null, \"semantic_query\": null, \"needs_recency\": false, \"reasoning\": \"<explanation>\"}\n\nIf it IS a media playback request, return:\n{\n  \"content_type\": \"song|album|artist|podcast|educational|specific_memory|music\",\n  \"query_specificity\": \"exact|partial|vague\",\n  \"artist\": \"<artist name or null>\",\n  \"title\": \"<title or null>\",\n  \"semantic_query\": \"<search query for semantic search>\",\n  \"needs_recency\": true|false,\n  \"reasoning\": \"<brief explanation>\"\n}",
+      "test_each_transcript": "Run this LLM prompt for each test case transcript and compare output to expected_intent"
+    },
+    "step_2_match_evaluation": {
+      "action": "llm.prompt",
+      "system_prompt": "Evaluate if library search results satisfy the user's original request. Return ONLY valid JSON with no markdown fences.\n\n{\n  \"match_quality\": \"excellent|good|poor|none\",\n  \"best_match_id\": <media_id or null>,\n  \"confidence\": 0.0-1.0,\n  \"should_search_youtube\": true|false,\n  \"reasoning\": \"<explanation>\"\n}\n\nGuidelines:\n- excellent: Play immediately (exact match, high score >0.8, or strong specific memory match >0.75)\n- good: Offer choice between library and YouTube (partial match, score 0.5-0.8, or user wants 'newest' but we have old version)\n- poor: Skip to YouTube (score <0.5, or user wants album but we only have one song)\n- none: No library results, go straight to YouTube\n\nConsider:\n- Does user want 'newest/latest'? Check if library content is recent enough\n- Does user want full album but we only have singles?\n- Does user want unheard content? Check playback history\n- Is semantic similarity score strong enough for the query type?",
+      "test_with_context": "For each test case, provide: original transcript + intent analysis + library results, then compare LLM output to expected_match_eval"
+    },
+    "validation_criteria": {
+      "intent_analysis_must_match": [
+        "content_type",
+        "query_specificity",
+        "needs_recency"
+      ],
+      "intent_analysis_should_be_close": [
+        "semantic_query (allow variations in wording)",
+        "reasoning (allow different phrasing)"
+      ],
+      "match_eval_must_match": [
+        "match_quality",
+        "should_search_youtube"
+      ],
+      "match_eval_should_be_close": [
+        "confidence (within ±0.15)",
+        "best_match_id (if match_quality is excellent)"
+      ]
+    }
+  }
+}
