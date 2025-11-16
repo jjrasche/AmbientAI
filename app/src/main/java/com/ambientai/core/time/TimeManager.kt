@@ -20,6 +20,7 @@ class TimeManager @Inject constructor(@ApplicationContext private val context: C
     private val dateFormat = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault())
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private var timerIdCounter = 0
+    private val activeTimers = mutableSetOf<Int>()
 
     fun execute(actionName: String, input: JSONObject) = when (actionName) {
         "time.get" -> getCurrentTime(input)
@@ -59,6 +60,7 @@ class TimeManager @Inject constructor(@ApplicationContext private val context: C
         }
         val pendingIntent = PendingIntent.getBroadcast(context, timerId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtMillis, pendingIntent)
+        activeTimers.add(timerId)
         return JSONObject().apply {
             put("success", true)
             put("timerId", timerId)
@@ -71,8 +73,10 @@ class TimeManager @Inject constructor(@ApplicationContext private val context: C
         val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         alarmManager.cancel(pendingIntent)
         pendingIntent.cancel()
+        activeTimers.clear()
         return JSONObject().apply { put("success", true); put("message", "Timer cancelled") }
     }
+    fun hasActiveTimer(): Boolean = activeTimers.isNotEmpty()
     private fun formatDuration(minutes: Int, seconds: Int) = when {
         minutes > 0 && seconds > 0 -> "$minutes minute${if (minutes > 1) "s" else ""} and $seconds second${if (seconds > 1) "s" else ""}"
         minutes > 0 -> "$minutes minute${if (minutes > 1) "s" else ""}"

@@ -1,17 +1,29 @@
 package com.ambientai.testing
 
+import android.content.Context
 import android.util.Log
+import com.ambientai.core.music.MusicPlayerService
+import com.ambientai.core.task.TaskManager
+import com.ambientai.core.time.TimeManager
+import com.ambientai.data.entities.Media
+import com.ambientai.data.entities.Task
+import com.ambientai.data.entities.TaskStatus
+import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.repositories.*
 import com.ambientai.debug.SttSimulator
 import com.ambientai.workflow.WorkflowRouter
 import com.ambientai.workflow.WorkflowExecutor
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
 import org.json.JSONObject
+import java.io.File
+import java.util.concurrent.TimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class RegressionTestExecutor @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val sttSimulator: SttSimulator,
     private val workflowRouter: WorkflowRouter,
     private val workflowExecutor: WorkflowExecutor,
@@ -19,13 +31,21 @@ class RegressionTestExecutor @Inject constructor(
     private val actionExecRepo: IActionExecutionRepository,
     private val taskRepo: ITaskRepository,
     private val transcriptRepo: ITranscriptRepository,
-    private val mediaHistoryRepo: IMediaHistoryRepository
+    private val mediaHistoryRepo: IMediaHistoryRepository,
+    private val mediaRepo: IMediaRepository,
+    private val musicPlayerService: MusicPlayerService,
+    private val taskManager: TaskManager,
+    private val timeManager: TimeManager
 ) {
-    companion object { private const val TAG = "RegressionTest" }
+    companion object {
+        private const val TAG = "RegressionTest"
+        private const val DEFAULT_TIMEOUT_MS = 5000L
+        private const val POLL_INTERVAL_MS = 100L
+    }
 
     suspend fun runTest(scenario: RegressionTestScenario): TestResult {
         Log.d(TAG, "🧪 RUNNING TEST: ${scenario.testId}")
-        val startTime = System.currentTimeMillis()
+        val testStartTime = System.currentTimeMillis()
         val failures = mutableListOf<String>()
 
         try {
@@ -56,8 +76,13 @@ class RegressionTestExecutor @Inject constructor(
                 Log.w(TAG, "  → No workflow matched for: ${scenario.input.utterance}")
             }
 
-            // 5. Wait for async processing
-            delay(2000)
+            // 5. Wait for workflow completion (polling instead of fixed delay)
+            val execution = try {
+                waitForWorkflowCompletion(testStartTime, DEFAULT_TIMEOUT_MS)
+            } catch (e: TimeoutException) {
+                Log.w(TAG, "  → Workflow did not complete within timeout")
+                null
+            }
 
             // 6. Capture final state
             val finalState = captureState()
@@ -65,7 +90,13 @@ class RegressionTestExecutor @Inject constructor(
             // 7. Assert expectations
             assertExpectations(scenario.expected, initialState, finalState, failures)
 
-            val durationMs = System.currentTimeMillis() - startTime
+            // 8. Assert service state changes (Level 2 verification)
+            assertServiceStateChanges(scenario.expected, failures)
+
+            // 9. Assert negative conditions
+            assertNegativeConditions(scenario.expected, initialState, finalState, failures)
+
+            val durationMs = System.currentTimeMillis() - testStartTime
             val passed = failures.isEmpty()
 
             Log.d(TAG, if (passed) "✅ PASSED: ${scenario.testId} (${durationMs}ms)"
@@ -78,7 +109,8 @@ class RegressionTestExecutor @Inject constructor(
                 failures = failures,
                 details = mapOf(
                     "initial_state" to initialState.toMap(),
-                    "final_state" to finalState.toMap()
+                    "final_state" to finalState.toMap(),
+                    "workflow_execution_id" to (execution?.id ?: -1L)
                 )
             )
         } catch (e: Exception) {
@@ -86,11 +118,41 @@ class RegressionTestExecutor @Inject constructor(
             return TestResult(
                 testId = scenario.testId,
                 passed = false,
-                durationMs = System.currentTimeMillis() - startTime,
+                durationMs = System.currentTimeMillis() - testStartTime,
                 failures = listOf("Exception: ${e.message}"),
-                details = mapOf("error" to (e.message ?: "Unknown error"))
+                details = mapOf("error" to (e.message ?: "Unknown error"), "stack_trace" to e.stackTraceToString())
             )
+        } finally {
+            // Always cleanup after test (even if it failed)
+            cleanup()
         }
+    }
+
+    /**
+     * Poll for workflow completion instead of using fixed delay.
+     * Throws TimeoutException if workflow doesn't complete within timeout.
+     */
+    private suspend fun waitForWorkflowCompletion(
+        testStartTime: Long,
+        timeout: Long = DEFAULT_TIMEOUT_MS
+    ): WorkflowExecution {
+        val deadline = System.currentTimeMillis() + timeout
+
+        while (System.currentTimeMillis() < deadline) {
+            val recent = workflowExecRepo.getRecent(1).firstOrNull()
+
+            // Check if this execution started after test began and completed
+            if (recent != null &&
+                recent.startTime >= testStartTime &&
+                recent.endTime != null) {
+                Log.d(TAG, "  → Workflow completed in ${recent.endTime!! - recent.startTime}ms")
+                return recent
+            }
+
+            delay(POLL_INTERVAL_MS)
+        }
+
+        throw TimeoutException("Workflow did not complete within ${timeout}ms")
     }
 
     private fun captureState() = SystemState(
@@ -101,16 +163,129 @@ class RegressionTestExecutor @Inject constructor(
         mediaHistoryCount = mediaHistoryRepo.count(),
         recentWorkflows = workflowExecRepo.getRecent(5),
         recentActions = actionExecRepo.getRecent(10),
-        activeTasks = taskRepo.getByStatus(com.ambientai.data.entities.TaskStatus.ACTIVE),
+        activeTasks = taskRepo.getByStatus(TaskStatus.ACTIVE),
         recentMediaHistory = mediaHistoryRepo.getRecent(5)
     )
 
-    private fun applyPreconditions(preconditions: Map<String, Any>) = Unit.also {
-        // Handle preconditions like setting up music player state, creating test tasks, etc.
-        Log.d(TAG, "📋 Applying preconditions: $preconditions")
-        // TODO: Implement based on actual precondition needs
+    /**
+     * Apply preconditions using REAL production methods only.
+     * No test hooks, no special modes.
+     */
+    private suspend fun applyPreconditions(preconditions: Map<String, Any>) {
+        Log.d(TAG, "📋 Applying preconditions: ${preconditions.keys}")
+
+        preconditions.forEach { (key, value) ->
+            when (key) {
+                // Database state - direct entity creation
+                "media_in_library" -> {
+                    val mediaList = value as List<Map<String, Any>>
+                    mediaList.forEach { mediaData ->
+                        // Copy test audio from assets to device
+                        val audioFile = copyAssetToCache(
+                            assetPath = "test_audio/${mediaData["filePath"]}",
+                            cacheDir = context.cacheDir
+                        )
+
+                        // Create Media entity with real file path
+                        mediaRepo.save(Media(
+                            filePath = audioFile.absolutePath,
+                            title = mediaData["title"] as String,
+                            artist = mediaData["artist"] as? String ?: "Unknown",
+                            album = mediaData["album"] as? String ?: ""
+                        ))
+                        Log.d(TAG, "  → Created media: ${mediaData["title"]}")
+                    }
+                }
+
+                "active_task" -> {
+                    // Use REAL task creation action (no test hooks)
+                    taskManager.execute("task.start", JSONObject().apply {
+                        put("name", value as String)
+                    })
+                    Log.d(TAG, "  → Created active task: $value")
+                }
+
+                // Service state - use REAL methods
+                "music_playing" -> {
+                    // Copy test audio from assets
+                    val testFile = copyAssetToCache(
+                        assetPath = "test_audio/$value",
+                        cacheDir = context.cacheDir
+                    )
+
+                    // Use REAL playback method (not test hook)
+                    musicPlayerService.loadAndPlay(testFile.absolutePath)
+
+                    // Poll until ACTUALLY playing (Level 2 verification)
+                    val playing = pollUntil(timeout = 2000) {
+                        musicPlayerService.getMediaPlayer()?.isPlaying() == true
+                    }
+
+                    if (!playing) {
+                        throw PreconditionFailedException(
+                            "Music failed to start within 2 seconds"
+                        )
+                    }
+                    Log.d(TAG, "  → Music playing: $value")
+                }
+
+                "timer_running" -> {
+                    // Use REAL timer action (no test hooks)
+                    val durationMs = value as Long
+                    timeManager.execute("timer.set", JSONObject().apply {
+                        put("minutes", durationMs / 60000)
+                    })
+                    Log.d(TAG, "  → Timer set for ${durationMs / 60000} minutes")
+                }
+
+                else -> {
+                    Log.w(TAG, "  → Unknown precondition: $key")
+                }
+            }
+        }
     }
 
+    /**
+     * Copy file from assets to cache directory for testing.
+     */
+    private fun copyAssetToCache(assetPath: String, cacheDir: File): File {
+        val outputFile = File(cacheDir, assetPath.substringAfterLast("/"))
+
+        // Create parent directories if needed
+        outputFile.parentFile?.mkdirs()
+
+        context.assets.open(assetPath).use { input ->
+            outputFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        }
+
+        return outputFile
+    }
+
+    /**
+     * Poll until condition is true or timeout.
+     */
+    private suspend fun pollUntil(
+        timeout: Long = 2000,
+        pollInterval: Long = 100,
+        condition: () -> Boolean
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeout
+
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) {
+                return true
+            }
+            delay(pollInterval)
+        }
+
+        return false
+    }
+
+    /**
+     * Assert positive expectations.
+     */
     private fun assertExpectations(
         expected: TestExpectations,
         initialState: SystemState,
@@ -123,7 +298,6 @@ class RegressionTestExecutor @Inject constructor(
             if (recentWorkflow?.workflowName != expectedWorkflow) {
                 failures.add("Expected workflow '$expectedWorkflow', got '${recentWorkflow?.workflowName}'")
             }
-            Unit
         }
 
         expected.workflowExecuted?.let { shouldExecute ->
@@ -133,13 +307,12 @@ class RegressionTestExecutor @Inject constructor(
             } else if (!shouldExecute && newExecutions > 0) {
                 failures.add("Expected no workflow execution, but $newExecutions new executions found")
             }
-            Unit
         }
 
         expected.workflowSuccess?.let { shouldSucceed ->
             val recentWorkflow = finalState.recentWorkflows.firstOrNull()
             if (recentWorkflow != null && recentWorkflow.success != shouldSucceed) {
-                failures.add("Expected workflow success=$shouldSucceed, got ${recentWorkflow.success}")
+                failures.add("Expected workflow success=$shouldSucceed, got ${recentWorkflow.success}. Error: ${recentWorkflow.errorMessage ?: "None"}")
             }
         }
 
@@ -149,9 +322,19 @@ class RegressionTestExecutor @Inject constructor(
                 !initialState.recentActions.any { it.id == action.id }
             }
             val executedActionNames = newActions.map { it.actionName }
+
             expectedActions.forEach { expectedAction ->
                 if (!executedActionNames.contains(expectedAction)) {
                     failures.add("Expected action '$expectedAction' not executed. Got: ${executedActionNames.joinToString(", ")}")
+                }
+            }
+
+            // Check action order matches expected order
+            if (executedActionNames.size >= expectedActions.size) {
+                expectedActions.forEachIndexed { index, expectedAction ->
+                    if (index < executedActionNames.size && executedActionNames[index] != expectedAction) {
+                        failures.add("Action order mismatch at position $index: expected '$expectedAction', got '${executedActionNames[index]}'")
+                    }
                 }
             }
         }
@@ -185,17 +368,138 @@ class RegressionTestExecutor @Inject constructor(
             }
         }
     }
+
+    /**
+     * Assert service state changes (Level 2 verification).
+     * Checks actual Android component state, not just service wrappers.
+     */
+    private fun assertServiceStateChanges(
+        expected: TestExpectations,
+        failures: MutableList<String>
+    ) {
+        expected.serviceStateChanges?.forEach { (key, expectedValue) ->
+            when (key) {
+                "music_player_playing" -> {
+                    val expected = expectedValue as Boolean
+
+                    // Level 1: Service wrapper check
+                    val level1 = musicPlayerService.isPlaying()
+
+                    // Level 2: Actual MediaPlayer check (deep verification)
+                    val level2 = musicPlayerService.getMediaPlayer()?.isPlaying() ?: false
+
+                    if (level1 != expected) {
+                        failures.add("Service wrapper: Expected music_player_playing=$expected, got $level1")
+                    }
+                    if (level2 != expected) {
+                        failures.add("MediaPlayer (Level 2): Expected isPlaying=$expected, got $level2")
+                    }
+                }
+
+                "timer_active" -> {
+                    // Check timer state
+                    val expected = expectedValue as Boolean
+                    val actual = timeManager.hasActiveTimer()
+                    if (actual != expected) {
+                        failures.add("Expected timer_active=$expected, got $actual")
+                    }
+                }
+
+                else -> {
+                    Log.w(TAG, "  → Unknown service state: $key")
+                }
+            }
+        }
+    }
+
+    /**
+     * Assert negative conditions (what should NOT happen).
+     */
+    private fun assertNegativeConditions(
+        expected: TestExpectations,
+        initialState: SystemState,
+        finalState: SystemState,
+        failures: MutableList<String>
+    ) {
+        // Check actions that should NOT have executed
+        expected.shouldNotExecute?.let { forbiddenActions ->
+            val newActions = finalState.recentActions.filter { action ->
+                !initialState.recentActions.any { it.id == action.id }
+            }
+            val executedActionNames = newActions.map { it.actionName }
+
+            forbiddenActions.forEach { forbidden ->
+                if (executedActionNames.contains(forbidden)) {
+                    failures.add("Action '$forbidden' should NOT have executed, but it did")
+                }
+            }
+        }
+
+        // Check entities that should NOT have been created
+        expected.shouldNotCreate?.let { forbiddenEntities ->
+            forbiddenEntities.forEach { entityType ->
+                when (entityType) {
+                    "Task" -> {
+                        val created = (finalState.taskCount - initialState.taskCount).toInt()
+                        if (created > 0) {
+                            failures.add("Should NOT have created Task entities, but created $created")
+                        }
+                    }
+                    "WorkflowExecution" -> {
+                        val created = (finalState.workflowExecutionCount - initialState.workflowExecutionCount).toInt()
+                        if (created > 0) {
+                            failures.add("Should NOT have created WorkflowExecution, but created $created")
+                        }
+                    }
+                    "MediaHistory" -> {
+                        val created = (finalState.mediaHistoryCount - initialState.mediaHistoryCount).toInt()
+                        if (created > 0) {
+                            failures.add("Should NOT have created MediaHistory, but created $created")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Cleanup after test to ensure isolation.
+     * Uses real production methods only.
+     */
+    private fun cleanup() {
+        Log.d(TAG, "🧹 Cleaning up test state...")
+
+        try {
+            // Stop music if playing
+            if (musicPlayerService.isPlaying()) {
+                musicPlayerService.stop()
+            }
+
+            // Cancel any active timers
+            if (timeManager.hasActiveTimer()) {
+                timeManager.execute("timer.cancel", JSONObject())
+            }
+
+            // Note: Database cleanup happens via in-memory ObjectBox (close DB in test teardown)
+            // Service state reset happens via normal service methods (stop, cancel, etc.)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during cleanup", e)
+        }
+    }
 }
 
+/**
+ * System state snapshot for comparing before/after test execution.
+ */
 data class SystemState(
     val workflowExecutionCount: Long,
     val actionExecutionCount: Long,
     val taskCount: Long,
     val transcriptCount: Long,
     val mediaHistoryCount: Long,
-    val recentWorkflows: List<com.ambientai.data.entities.WorkflowExecution>,
+    val recentWorkflows: List<WorkflowExecution>,
     val recentActions: List<com.ambientai.data.entities.ActionExecution>,
-    val activeTasks: List<com.ambientai.data.entities.Task>,
+    val activeTasks: List<Task>,
     val recentMediaHistory: List<com.ambientai.data.entities.MediaHistory>
 ) {
     fun toMap() = mapOf(
@@ -206,3 +510,8 @@ data class SystemState(
         "media_history" to mediaHistoryCount
     )
 }
+
+/**
+ * Exception thrown when precondition setup fails.
+ */
+class PreconditionFailedException(message: String) : Exception(message)
