@@ -188,6 +188,26 @@ class MusicPlayerService : Service() {
     private fun saveHistory() = currentSong?.let { song -> mediaHistoryRepository.save(MediaHistory(mediaPath = song.path, mediaType = "music", timestamp = playbackStartTime, durationPlayedMs = System.currentTimeMillis() - playbackStartTime)) }
     private fun cleanup() { fadeJob?.cancel(); fadeJob = null; mediaPlayer?.release(); mediaPlayer = null; currentSong = null; updateState() }
     fun isPlaying() = mediaPlayer?.isPlaying ?: false
+    fun getMediaPlayer(): MediaPlayer? = mediaPlayer
+    fun stop() = stop(JSONObject())
+    fun loadAndPlay(filePath: String) {
+        cleanup()
+        playbackStartTime = System.currentTimeMillis()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(filePath)
+            prepare()
+            start()
+            setOnCompletionListener {
+                Log.d(TAG, "✓ COMPLETED: $filePath")
+                saveHistory()
+            }
+            setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "✖ PLAYBACK ERROR: what=$what extra=$extra")
+                true
+            }
+        }
+        updateState()
+    }
     private fun updateState() {
         _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, isPlaying())
         updateMediaSession()

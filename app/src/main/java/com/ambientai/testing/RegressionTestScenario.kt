@@ -17,13 +17,20 @@ data class TestInput(
 )
 
 data class TestExpectations(
+    // Positive assertions (what SHOULD happen)
     val workflowMatched: String? = null,
     val workflowExecuted: Boolean? = null,
     val workflowSuccess: Boolean? = null,
     val actionsExecuted: List<String>? = null,
     val databaseChanges: Map<String, DatabaseAssertion>? = null,
+    val serviceStateChanges: Map<String, Any>? = null,
     val sideEffects: Map<String, Any>? = null,
-    val ttsSpoken: String? = null
+    val ttsSpoken: String? = null,
+
+    // Negative assertions (what should NOT happen)
+    val shouldNotExecute: List<String>? = null,
+    val shouldNotCreate: List<String>? = null,
+    val shouldNotModify: List<String>? = null
 )
 
 data class DatabaseAssertion(
@@ -55,6 +62,7 @@ fun RegressionTestScenario.toJson(): JSONObject = JSONObject().apply {
         }
     })
     put("expected", JSONObject().apply {
+        // Positive assertions
         expected.workflowMatched?.let { put("workflow_matched", it) }
         expected.workflowExecuted?.let { put("workflow_executed", it) }
         expected.workflowSuccess?.let { put("workflow_success", it) }
@@ -72,7 +80,13 @@ fun RegressionTestScenario.toJson(): JSONObject = JSONObject().apply {
             }
             put("database_changes", dbJson)
         }
+        expected.serviceStateChanges?.let { put("service_state_changes", JSONObject(it)) }
         expected.sideEffects?.let { put("side_effects", JSONObject(it)) }
         expected.ttsSpoken?.let { put("tts_spoken", it) }
+
+        // Negative assertions
+        expected.shouldNotExecute?.let { put("should_not_execute", it) }
+        expected.shouldNotCreate?.let { put("should_not_create", it) }
+        expected.shouldNotModify?.let { put("should_not_modify", it) }
     })
 }
