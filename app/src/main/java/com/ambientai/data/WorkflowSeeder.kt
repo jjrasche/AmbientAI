@@ -46,6 +46,13 @@ class WorkflowSeeder @Inject constructor(
     {"action":"tts.speak","input":{"text":"Completed ${'$'}task.name"}}
   ]
 }""".trimIndent()))
+        repo.save(WorkflowDefinition(name = "resume_task", enabled = true, definition = """{
+  "triggers":["resume task","continue task","unpause task"],
+  "steps":[
+    {"action":"task.resume","output":"task"},
+    {"action":"tts.speak","input":{"text":"Resumed ${'$'}task.name"}}
+  ]
+}""".trimIndent()))
         repo.save(WorkflowDefinition(name = "task_status", enabled = true, definition = """{
   "triggers":["current task","what am I working on","task status","how long"],
   "steps":[
@@ -195,6 +202,17 @@ class WorkflowSeeder @Inject constructor(
   ]
 }""".trimIndent()
         ))
+        repo.save(WorkflowDefinition(
+            name = "cancel_timer",
+            enabled = true,
+            definition = """{
+  "triggers":["cancel timer","stop timer","cancel alarm","clear timer"],
+  "steps":[
+    {"action":"timer.cancel","output":"result"},
+    {"action":"tts.speak","input":{"text":"Timer cancelled"}}
+  ]
+}""".trimIndent()
+        ))
     }
     private fun seedMusicWorkflows() {
         repo.save(WorkflowDefinition(
@@ -254,7 +272,7 @@ class WorkflowSeeder @Inject constructor(
 }""".trimIndent()
         ))
         repo.save(WorkflowDefinition(
-            name = "next_song",
+            name = "next_track",
             enabled = true,
             definition = """{
   "triggers": {
@@ -272,7 +290,7 @@ class WorkflowSeeder @Inject constructor(
 }""".trimIndent()
         ))
         repo.save(WorkflowDefinition(
-            name = "previous_song",
+            name = "previous_track",
             enabled = true,
             definition = """{
   "triggers": {
@@ -290,7 +308,7 @@ class WorkflowSeeder @Inject constructor(
 }""".trimIndent()
         ))
         repo.save(WorkflowDefinition(
-            name = "whats_playing",
+            name = "now_playing",
             enabled = true,
             definition = """{
   "triggers": {
@@ -300,6 +318,20 @@ class WorkflowSeeder @Inject constructor(
   "steps": [
     {"action": "music.getNowPlaying", "output": "result"},
     {"action": "tts.speak", "input": {"text": "${'$'}result.response"}}
+  ]
+}""".trimIndent()
+        ))
+        repo.save(WorkflowDefinition(
+            name = "stop_music",
+            enabled = true,
+            definition = """{
+  "triggers": {
+    "keywords": ["stop", "stop music", "stop playing"],
+    "conditions": {"playbackActive": true}
+  },
+  "steps": [
+    {"action": "music.stop", "output": "result"},
+    {"action": "tts.speak", "input": {"text": "Music stopped"}}
   ]
 }""".trimIndent()
         ))
