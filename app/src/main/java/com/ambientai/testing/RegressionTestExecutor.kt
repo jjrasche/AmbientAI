@@ -205,6 +205,16 @@ class RegressionTestExecutor @Inject constructor(
                     Log.d(TAG, "  → Created active task: $value")
                 }
 
+                "paused_task" -> {
+                    // Create task using real action
+                    taskManager.execute("task.start", JSONObject().apply {
+                        put("name", value as String)
+                    })
+                    // Pause it using real action
+                    taskManager.execute("task.pause", JSONObject())
+                    Log.d(TAG, "  → Created paused task: $value")
+                }
+
                 // Service state - use REAL methods
                 "music_playing" -> {
                     // Copy test audio from assets
@@ -236,6 +246,44 @@ class RegressionTestExecutor @Inject constructor(
                         put("minutes", durationMs / 60000)
                     })
                     Log.d(TAG, "  → Timer set for ${durationMs / 60000} minutes")
+                }
+
+                "music_paused" -> {
+                    // Copy test audio from assets
+                    val testFile = copyAssetToCache(
+                        assetPath = "test_audio/$value",
+                        cacheDir = context.cacheDir
+                    )
+
+                    // Use REAL playback method to start playing
+                    musicPlayerService.loadAndPlay(testFile.absolutePath)
+
+                    // Poll until ACTUALLY playing
+                    val playing = pollUntil(timeout = 2000) {
+                        musicPlayerService.getMediaPlayer()?.isPlaying() == true
+                    }
+
+                    if (!playing) {
+                        throw PreconditionFailedException(
+                            "Music failed to start within 2 seconds (needed for paused state)"
+                        )
+                    }
+
+                    // Pause using real method
+                    musicPlayerService.pause()
+
+                    // Poll until ACTUALLY paused (Level 2 verification)
+                    val paused = pollUntil(timeout = 1000) {
+                        musicPlayerService.getMediaPlayer()?.isPlaying() == false
+                    }
+
+                    if (!paused) {
+                        throw PreconditionFailedException(
+                            "Music failed to pause within 1 second"
+                        )
+                    }
+
+                    Log.d(TAG, "  → Music paused: $value")
                 }
 
                 else -> {
