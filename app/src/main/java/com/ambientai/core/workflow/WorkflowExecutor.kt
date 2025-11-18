@@ -47,7 +47,7 @@ class WorkflowExecutor @Inject constructor(
     suspend fun execute(match: WorkflowMatch): WorkflowResult = withContext(Dispatchers.IO) {
         Log.d(TAG, "⚙ EXECUTING WORKFLOW: ${match.definition.name}")
         val startTime = System.currentTimeMillis()
-        val executionLog = WorkflowExecution(workflowId = match.definition.id, workflowName = match.definition.name, transcript = match.context.transcript, matchedTrigger = match.context.matchedTrigger, success = false, executionTimeMs = 0, timestamp = startTime).also { executionRepo.save(it) }
+        val executionLog = executionRepo.save(WorkflowExecution(workflowId = match.definition.id, workflowName = match.definition.name, transcript = match.context.transcript, matchedTrigger = match.context.matchedTrigger, success = false, executionTimeMs = 0, timestamp = startTime))
         runCatching {
             JSONObject(match.definition.definition).getJSONArray("steps").let { steps -> (0 until steps.length()).forEach { i -> executeStep(steps.getJSONObject(i), match.context, executionLog.id, i, "$i") } }
             executionLog.apply { success = true; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }

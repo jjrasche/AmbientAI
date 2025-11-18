@@ -51,6 +51,7 @@ class WorkflowExecutorIntegrationTest {
     private lateinit var musicPlayer: MusicPlayerHandler
     private lateinit var musicScanner: MusicScanner
     private lateinit var ui: UiService
+    private lateinit var mediaHandler: com.ambientai.core.media.MediaWorkflowHandler
     private lateinit var executor: WorkflowExecutor
 
     @Before
@@ -70,6 +71,7 @@ class WorkflowExecutorIntegrationTest {
         musicPlayer = mockk(relaxed = true)
         musicScanner = mockk(relaxed = true)
         ui = mockk(relaxed = true)
+        mediaHandler = mockk(relaxed = true)
 
         // Create executor with mixed fake/mock dependencies
         executor = WorkflowExecutor(
@@ -84,7 +86,8 @@ class WorkflowExecutorIntegrationTest {
             workflowActions = workflowActions,
             musicPlayer = musicPlayer,
             musicScanner = musicScanner,
-            ui = ui
+            ui = ui,
+            mediaHandler = mediaHandler
         )
 
         // Clear repos before each test

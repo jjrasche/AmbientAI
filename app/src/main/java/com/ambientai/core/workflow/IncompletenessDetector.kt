@@ -66,12 +66,13 @@ class IncompletenessDetector {
         }
     }.getOrElse { false }
     fun detectCancellation(text: String): Boolean {
-        val words = text.lowercase().split("\\s+".toRegex())
-        val recentWords = words.takeLast(3)
-        val hasCancellation = recentWords.any { it in RoutingConfig.CANCELLATION_PHRASES }
-        if (hasCancellation) {
-            Log.d(TAG, "   ↳ CANCELLATION DETECTED: ${recentWords.find { it in RoutingConfig.CANCELLATION_PHRASES }}")
+        val lowerText = text.lowercase()
+        // Check for multi-word phrases first (e.g., "never mind")
+        val matchedPhrase = RoutingConfig.CANCELLATION_PHRASES.find { phrase -> lowerText.contains(phrase) }
+        if (matchedPhrase != null) {
+            Log.d(TAG, "   ↳ CANCELLATION DETECTED: $matchedPhrase")
+            return true
         }
-        return hasCancellation
+        return false
     }
 }

@@ -11,7 +11,6 @@ import javax.inject.Singleton
 @Singleton
 class DebugServer @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
-    private val executor: DebugCommandExecutor,
     private val transcriptRepo: com.ambientai.data.repositories.ITranscriptRepository,
     private val workflowRepo: com.ambientai.data.repositories.IWorkflowDefinitionRepository,
     private val sttSimulator: SttSimulator,
@@ -171,10 +170,11 @@ curl -X POST http://localhost:8080/api/lyrics/search -d '{"query":"heartbreak","
         """.trimIndent()
     )
 
-    private fun handleStatus(): Response {
-        val result = executor.execute("status")
-        return jsonResponse(JSONObject(result))
-    }
+    private fun handleStatus(): Response = jsonResponse(JSONObject().apply {
+        put("status", "ok")
+        put("server", "running")
+        put("timestamp", System.currentTimeMillis())
+    })
 
     private fun handleWorkflows(): Response {
         val workflows = workflowRepo.getEnabled()
@@ -253,20 +253,16 @@ curl -X POST http://localhost:8080/api/lyrics/search -d '{"query":"heartbreak","
         val body = getRequestBody(session)
         val json = JSONObject(body)
         val cmd = json.getString("cmd")
-        val result = executor.execute(cmd)
         return jsonResponse(JSONObject().apply {
             put("command", cmd)
-            put("result", result)
+            put("status", "Command execution not implemented")
         })
     }
 
-    private fun handleTriggerWorkflow(workflowName: String): Response {
-        val result = executor.execute("trigger:$workflowName")
-        return jsonResponse(JSONObject().apply {
-            put("workflow", workflowName)
-            put("result", result)
-        })
-    }
+    private fun handleTriggerWorkflow(workflowName: String): Response = jsonResponse(JSONObject().apply {
+        put("workflow", workflowName)
+        put("status", "Workflow trigger not implemented")
+    })
 
     private fun getRequestBody(session: IHTTPSession): String {
         val map = mutableMapOf<String, String>()
