@@ -42,6 +42,7 @@ import javax.inject.Inject
 class MusicPlayerService : Service() {
     @Inject lateinit var musicScanner: MusicScanner
     @Inject lateinit var mediaHistoryRepository: IMediaHistoryRepository
+    @Inject lateinit var playbackStateManager: PlaybackStateManager
     private var mediaPlayer: MediaPlayer? = null
     private var currentSong: Song? = null
     private var currentSongIndex: Int = -1
@@ -209,7 +210,9 @@ class MusicPlayerService : Service() {
         updateState()
     }
     private fun updateState() {
-        _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, isPlaying())
+        val playing = isPlaying()
+        _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, playing)
+        playbackStateManager.setPlaying(playing)
         updateMediaSession()
         updateNotification()
     }

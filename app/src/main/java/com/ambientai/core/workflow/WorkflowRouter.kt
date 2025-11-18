@@ -12,7 +12,8 @@ import javax.inject.Singleton
 @Singleton
 class WorkflowRouter @Inject constructor(
     private val workflowRepo: IWorkflowDefinitionRepository,
-    private val llmService: GroqLlmService
+    private val llmService: GroqLlmService,
+    private val playbackStateManager: com.ambientai.core.music.PlaybackStateManager
 ) {
     private var workflows: List<WorkflowDefinition> = emptyList()
 
@@ -34,6 +35,16 @@ class WorkflowRouter @Inject constructor(
             }
             matches.isEmpty() -> createConversationalDefault(transcript, transcriptId)
             matches.size == 1 -> createWorkflowMatch(matches.first(), transcript, transcriptId)
+            matches.size > 1 -> {
+                val longestMatch = matches.maxByOrNull { it.matchLength }!!
+                val ambiguous = matches.filter { it.matchLength == longestMatch.matchLength }
+                if (ambiguous.size == 1) {
+                    Log.d(TAG, "   ↳ Multiple matches, selecting longest: ${longestMatch.definition.name}")
+                    createWorkflowMatch(longestMatch, transcript, transcriptId)
+                } else {
+                    throw MultipleMatchException(transcript = transcript, matchedWorkflows = ambiguous.map { it.definition.name })
+                }
+            }
             else -> throw MultipleMatchException(transcript = transcript, matchedWorkflows = matches.map { it.definition.name })
         }
     }
@@ -71,7 +82,27 @@ class WorkflowRouter @Inject constructor(
     private fun createConversationalDefault(transcript: String, transcriptId: Long) = WorkflowDefinition(id = -1, name = "conversational_default", enabled = true, definition = """{"triggers":{"keywords":[]},"steps":[{"action":"llm.prompt","input":{"systemPrompt":"You are a helpful voice assistant. Provide brief, conversational responses.","userPrompt":"$transcript","temperature":0.7,"maxTokens":50},"output":"response"},{"action":"tts.speak","input":{"text":"${'$'}response.response"}}]}""").let { defaultWorkflow -> WorkflowExecutionContext(workflowId = -1, workflowName = "conversational_default", transcript = transcript, matchedTrigger = "(default)").apply { variables["transcript"] = transcript; variables["transcriptId"] = transcriptId }.let { context -> WorkflowMatch(defaultWorkflow, context) } }
     private fun findMatchingTrigger(workflow: WorkflowDefinition, lowerTranscript: String): String? = parseTriggers(workflow.definition).firstOrNull { trigger -> lowerTranscript.contains(trigger.lowercase()) }
     private fun parseTriggers(workflowJson: String) = runCatching { JSONObject(workflowJson).let { json -> json.optJSONObject("triggers")?.let { triggersObj -> triggersObj.optJSONArray("keywords")?.let { keywordsArray -> List(keywordsArray.length()) { i -> keywordsArray.getString(i) } } ?: emptyList() } ?: json.optJSONArray("triggers")?.let { triggersArray -> List(triggersArray.length()) { i -> triggersArray.getString(i) } } ?: emptyList() } }.getOrElse { emptyList() }
-    private fun checkConditions(workflow: WorkflowDefinition): Boolean = true
+    private fun checkConditions(workflow: WorkflowDefinition): Boolean = runCatching {
+        JSONObject(workflow.definition).optJSONObject("triggers")?.optJSONObject("conditions")?.let { conditions ->
+            conditions.keys().asSequence().all { key ->
+                when (key) {
+                    "playbackActive" -> {
+                        val expectedState = conditions.getBoolean(key)
+                        val actualState = playbackStateManager.isPlaying()
+                        Log.d(TAG, "   ↳ Condition check: playbackActive (expected=$expectedState, actual=$actualState)")
+                        expectedState == actualState
+                    }
+                    else -> {
+                        Log.w(TAG, "   ↳ Unknown condition: $key")
+                        true
+                    }
+                }
+            }
+        } ?: true
+    }.getOrElse { e ->
+        Log.e(TAG, "   ↳ Error checking conditions: ${e.message}")
+        true
+    }
     private fun createWorkflowMatch(candidate: WorkflowMatchCandidate, transcript: String, transcriptId: Long): WorkflowMatch {
         val cleanedTranscript = transcript.replace(Regex("\\b(play|music|song|track)\\b", RegexOption.IGNORE_CASE), "").trim()
         Log.d(TAG, "   ↳ QUERY CLEANING: \"$transcript\" → \"$cleanedTranscript\"")
