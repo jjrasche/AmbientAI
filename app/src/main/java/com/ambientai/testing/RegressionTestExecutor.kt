@@ -346,7 +346,7 @@ class RegressionTestExecutor @Inject constructor(
         expected.actionsExecuted?.let { expectedActions ->
             val newActions = finalState.recentActions.filter { action ->
                 !initialState.recentActions.any { it.id == action.id }
-            }
+            }.sortedBy { it.timestamp }
             val executedActionNames = newActions.map { it.actionName }
 
             expectedActions.forEach { expectedAction ->
@@ -441,7 +441,7 @@ class RegressionTestExecutor @Inject constructor(
         expected.shouldNotExecute?.let { forbiddenActions ->
             val newActions = finalState.recentActions.filter { action ->
                 !initialState.recentActions.any { it.id == action.id }
-            }
+            }.sortedBy { it.timestamp }
             val executedActionNames = newActions.map { it.actionName }
 
             forbiddenActions.forEach { forbidden ->

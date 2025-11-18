@@ -28,7 +28,8 @@
       "WebFetch(domain:deepgram.com)",
       "Bash(bash:*)",
       "Bash(gh pr create:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(ffmpeg:*)"
     ],
     "deny": [],
     "ask": []
