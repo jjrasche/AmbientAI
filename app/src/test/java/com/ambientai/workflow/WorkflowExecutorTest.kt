@@ -48,7 +48,7 @@ class WorkflowExecutorTest {
     private lateinit var musicPlayer: MusicPlayerHandler
     private lateinit var musicScanner: MusicScanner
     private lateinit var ui: UiService
-    private lateinit var mediaHandler: com.ambientai.core.media.MediaWorkflowHandler
+    private lateinit var mediaHandler: com.ambientai.core.media.MediaHandler
     private lateinit var executor: WorkflowExecutor
 
     @Before
@@ -79,8 +79,6 @@ class WorkflowExecutorTest {
             logs = logs,
             time = time,
             workflowActions = workflowActions,
-            musicPlayer = musicPlayer,
-            musicScanner = musicScanner,
             ui = ui,
             mediaHandler = mediaHandler
         )

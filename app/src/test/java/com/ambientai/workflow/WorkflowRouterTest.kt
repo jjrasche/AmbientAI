@@ -36,7 +36,8 @@ class WorkflowRouterTest {
     fun setup() {
         workflowRepo = FakeWorkflowDefinitionRepository()
         llmService = mockk(relaxed = true)
-        router = WorkflowRouter(workflowRepo, llmService)
+        val playbackStateManager = mockk<com.ambientai.core.music.PlaybackStateManager>(relaxed = true)
+        router = WorkflowRouter(workflowRepo, llmService, playbackStateManager)
     }
 
     // ===== EXACT TRIGGER MATCHING =====

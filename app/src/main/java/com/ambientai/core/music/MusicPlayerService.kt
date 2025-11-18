@@ -213,6 +213,7 @@ class MusicPlayerService : Service() {
         val playing = isPlaying()
         _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, playing)
         playbackStateManager.setPlaying(playing)
+        playbackStateManager.setCurrentSong(currentSong)
         updateMediaSession()
         updateNotification()
     }

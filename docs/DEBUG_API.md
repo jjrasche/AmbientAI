@@ -116,12 +116,13 @@ Test responses show the routing decision path:
 curl -X POST http://localhost:8080/api/regression/run | jq
 ```
 
-### Run single test
+### Run single test by ID
 
 ```bash
-curl -X POST http://localhost:8080/api/regression/run \
-  -H "Content-Type: application/json" \
-  -d '{"test_id": "pause_music_while_playing"}' | jq
+# Run a specific test by ID (faster for debugging)
+curl -X POST http://localhost:8080/api/regression/run/next_track | jq
+curl -X POST http://localhost:8080/api/regression/run/previous_track | jq
+curl -X POST http://localhost:8080/api/regression/run/pause_music_while_playing | jq
 ```
 
 ### Get regression test scenarios

@@ -225,13 +225,13 @@ class WorkflowSeeder @Inject constructor(
   },
   "requiresInput": true,
   "steps": [
-    {"action": "music.play", "input": {"query": "${'$'}transcript"}, "output": "musicResult"},
+    {"action": "media.play", "input": {"query": "${'$'}transcript"}, "output": "musicResult"},
     {"action": "control.if", "condition": "${'$'}musicResult.success === false", "then": [
       {"action": "media.searchAndSelect", "input": {"query": "${'$'}transcript", "max_results": 5}, "output": "selected"},
       {"action": "control.if", "condition": "${'$'}selected.success === true", "then": [
         {"action": "media.download", "input": {"video_id": "${'$'}selected.video_id"}, "output": "downloaded"},
         {"action": "control.if", "condition": "${'$'}downloaded.success === true", "then": [
-          {"action": "music.play", "input": {"query": "${'$'}downloaded.title"}, "output": "playResult"},
+          {"action": "media.play", "input": {"query": "${'$'}downloaded.title"}, "output": "playResult"},
           {"action": "tts.speak", "input": {"text": "Playing ${'$'}downloaded.title"}}
         ], "else": [
           {"action": "tts.speak", "input": {"text": "Download failed"}}
@@ -252,7 +252,7 @@ class WorkflowSeeder @Inject constructor(
     "conditions": {"playbackActive": true}
   },
   "steps": [
-    {"action": "music.pause", "output": "result"},
+    {"action": "media.pause", "output": "result"},
     {"action": "tts.speak", "input": {"text": "Music paused"}}
   ]
 }""".trimIndent()
@@ -266,7 +266,7 @@ class WorkflowSeeder @Inject constructor(
     "conditions": {"playbackActive": false}
   },
   "steps": [
-    {"action": "music.resume", "output": "result"},
+    {"action": "media.resume", "output": "result"},
     {"action": "tts.speak", "input": {"text": "Resuming music"}}
   ]
 }""".trimIndent()
@@ -280,12 +280,7 @@ class WorkflowSeeder @Inject constructor(
     "conditions": {"playbackActive": true}
   },
   "steps": [
-    {"action": "music.next", "output": "result"},
-    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
-      {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
-    ], "else": [
-      {"action": "tts.speak", "input": {"text": "${'$'}result.error"}}
-    ]}
+    {"action": "media.next"}
   ]
 }""".trimIndent()
         ))
@@ -298,12 +293,7 @@ class WorkflowSeeder @Inject constructor(
     "conditions": {"playbackActive": true}
   },
   "steps": [
-    {"action": "music.previous", "output": "result"},
-    {"action": "control.if", "condition": "${'$'}result.success === true", "then": [
-      {"action": "tts.speak", "input": {"text": "Playing ${'$'}result.song by ${'$'}result.artist"}}
-    ], "else": [
-      {"action": "tts.speak", "input": {"text": "${'$'}result.error"}}
-    ]}
+    {"action": "media.previous"}
   ]
 }""".trimIndent()
         ))
@@ -316,7 +306,7 @@ class WorkflowSeeder @Inject constructor(
     "conditions": {}
   },
   "steps": [
-    {"action": "music.getNowPlaying", "output": "result"},
+    {"action": "media.getNowPlaying", "output": "result"},
     {"action": "tts.speak", "input": {"text": "${'$'}result.response"}}
   ]
 }""".trimIndent()
@@ -330,7 +320,7 @@ class WorkflowSeeder @Inject constructor(
     "conditions": {"playbackActive": true}
   },
   "steps": [
-    {"action": "music.stop", "output": "result"},
+    {"action": "media.stop", "output": "result"},
     {"action": "tts.speak", "input": {"text": "Music stopped"}}
   ]
 }""".trimIndent()
@@ -345,7 +335,7 @@ class WorkflowSeeder @Inject constructor(
   },
   "requiresInput": false,
   "steps": [
-    {"action": "music.listAll", "output": "result"},
+    {"action": "media.scan", "output": "result"},
     {"action": "ui.showModal", "input": {"title": "Music Library (${'$'}result.totalSongs songs)", "message": "${'$'}result.songList"}},
     {"action": "tts.speak", "input": {"text": "${'$'}result.summary"}}
   ]

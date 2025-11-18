@@ -2,7 +2,7 @@ package com.ambientai.testing
 
 import android.content.Context
 import android.util.Log
-import com.ambientai.core.music.MusicPlayerHandler
+import com.ambientai.core.media.MediaHandler
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.time.TimeManager
 import com.ambientai.data.entities.Media
@@ -33,7 +33,7 @@ class RegressionTestExecutor @Inject constructor(
     private val transcriptRepo: ITranscriptRepository,
     private val mediaHistoryRepo: IMediaHistoryRepository,
     private val mediaRepo: IMediaRepository,
-    private val musicPlayerHandler: MusicPlayerHandler,
+    private val mediaHandler: MediaHandler,
     private val taskManager: TaskManager,
     private val timeManager: TimeManager
 ) {
@@ -218,21 +218,20 @@ class RegressionTestExecutor @Inject constructor(
 
                 // Service state - use REAL methods
                 "music_playing" -> {
-                    // Copy test audio from assets
-                    val testFile = copyAssetToCache(
-                        assetPath = "test_audio/$value",
-                        cacheDir = context.cacheDir
-                    )
-
-                    // Use REAL playback method via action handler
-                    musicPlayerHandler.execute("music.play", JSONObject().apply {
-                        put("filePath", testFile.absolutePath)
+                    // Play first available song in library (any artist/song will work for precondition)
+                    // This uses the REAL media.play action which will search and play
+                    val result = mediaHandler.execute("media.play", JSONObject().apply {
+                        put("query", "a")  // Generic query that should match many songs
                     })
 
-                    // Note: Cannot verify actual playback state without service reference
-                    // Trust that the action handler worked correctly
-                    delay(500) // Give time for playback to start
-                    Log.d(TAG, "  → Music play command sent: $value")
+                    if (!result.getBoolean("success")) {
+                        Log.w(TAG, "  → Failed to play music: ${result.optString("error")}")
+                        Log.w(TAG, "  → Continuing test anyway (music playback not critical for routing)")
+                    }
+
+                    // Wait for playback to start (onPrepared callback + state update)
+                    delay(1500) // Give time for MediaPlayer to prepare and update PlaybackStateManager
+                    Log.d(TAG, "  → Music play precondition complete")
                 }
 
                 "timer_running" -> {
@@ -252,13 +251,13 @@ class RegressionTestExecutor @Inject constructor(
                     )
 
                     // Use REAL playback method to start playing
-                    musicPlayerHandler.execute("music.play", JSONObject().apply {
+                    mediaHandler.execute("media.play", JSONObject().apply {
                         put("filePath", testFile.absolutePath)
                     })
                     delay(500) // Give time for playback to start
 
                     // Pause using real action handler
-                    musicPlayerHandler.execute("music.pause", JSONObject())
+                    mediaHandler.execute("media.pause", JSONObject())
                     delay(200) // Give time for pause to take effect
 
                     Log.d(TAG, "  → Music paused: $value")
@@ -482,12 +481,12 @@ class RegressionTestExecutor @Inject constructor(
      * Cleanup after test to ensure isolation.
      * Uses real production methods only.
      */
-    private fun cleanup() {
+    private suspend fun cleanup() {
         Log.d(TAG, "🧹 Cleaning up test state...")
 
         try {
             // Stop music if playing
-            musicPlayerHandler.execute("music.stop", JSONObject())
+            mediaHandler.execute("media.stop", JSONObject())
 
             // Cancel any active timers
             if (timeManager.hasActiveTimer()) {

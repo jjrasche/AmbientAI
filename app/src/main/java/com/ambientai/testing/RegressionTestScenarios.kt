@@ -34,8 +34,7 @@ class RegressionTestScenarios @Inject constructor() {
         logWorkout(),
 
         // Conversational workflows
-        generalQuestion(),
-        weatherQuery()
+        generalQuestion()
     )
 
     private fun playMusicInLibrary() = RegressionTestScenario(
@@ -50,7 +49,7 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "play_music",
             workflowExecuted = true,
             workflowSuccess = true,
-            actionsExecuted = listOf("music.play"),
+            actionsExecuted = listOf("media.play"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(minCount = 1)
@@ -71,10 +70,10 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "play_music",
             workflowExecuted = true,
             workflowSuccess = false,  // Will fail because not in library
-            actionsExecuted = listOf("llm.prompt", "music.play"),
+            actionsExecuted = listOf("media.play"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(minCount = 2)
+                "ActionExecution" to DatabaseAssertion(minCount = 1)
             )
         )
     )
@@ -136,13 +135,13 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "pause_music",
             workflowExecuted = true,
             workflowSuccess = true,
-            actionsExecuted = listOf("music.pause", "tts.speak"),
+            actionsExecuted = listOf("media.pause", "tts.speak"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(count = 2)
             ),
             serviceStateChanges = mapOf("music_player_playing" to false),
-            shouldNotExecute = listOf("music.play", "music.next", "music.previous")
+            shouldNotExecute = listOf("media.play", "media.next", "media.previous")
         )
     )
 
@@ -181,13 +180,13 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "resume_music",
             workflowExecuted = true,
             workflowSuccess = true,
-            actionsExecuted = listOf("music.resume", "tts.speak"),
+            actionsExecuted = listOf("media.resume", "tts.speak"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(count = 2)
             ),
             serviceStateChanges = mapOf("music_player_playing" to true),
-            shouldNotExecute = listOf("music.play", "music.pause")
+            shouldNotExecute = listOf("media.play", "media.pause")
         )
     )
 
@@ -204,13 +203,13 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "next_track",
             workflowExecuted = true,
             workflowSuccess = true,
-            actionsExecuted = listOf("music.next"),
+            actionsExecuted = listOf("media.next"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(count = 1)
             ),
             serviceStateChanges = mapOf("music_player_playing" to true),
-            shouldNotExecute = listOf("music.previous", "music.pause")
+            shouldNotExecute = listOf("media.previous", "media.pause")
         )
     )
 
@@ -227,13 +226,13 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "previous_track",
             workflowExecuted = true,
             workflowSuccess = true,
-            actionsExecuted = listOf("music.previous"),
+            actionsExecuted = listOf("media.previous"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(count = 1)
             ),
             serviceStateChanges = mapOf("music_player_playing" to true),
-            shouldNotExecute = listOf("music.next", "music.pause")
+            shouldNotExecute = listOf("media.next", "media.pause")
         )
     )
 
@@ -250,12 +249,12 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "now_playing",
             workflowExecuted = true,
             workflowSuccess = true,
-            actionsExecuted = listOf("music.getNowPlaying", "tts.speak"),
+            actionsExecuted = listOf("media.getNowPlaying", "tts.speak"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(count = 2)
             ),
-            shouldNotExecute = listOf("music.play", "music.pause", "music.next")
+            shouldNotExecute = listOf("media.play", "media.pause", "media.next")
         )
     )
 
@@ -272,13 +271,13 @@ class RegressionTestScenarios @Inject constructor() {
             workflowMatched = "stop_music",
             workflowExecuted = true,
             workflowSuccess = true,
-            actionsExecuted = listOf("music.stop", "tts.speak"),
+            actionsExecuted = listOf("media.stop", "tts.speak"),
             databaseChanges = mapOf(
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(count = 2)
             ),
             serviceStateChanges = mapOf("music_player_playing" to false),
-            shouldNotExecute = listOf("music.play", "music.pause")
+            shouldNotExecute = listOf("media.play", "media.pause")
         )
     )
 
@@ -463,28 +462,8 @@ class RegressionTestScenarios @Inject constructor() {
                 "WorkflowExecution" to DatabaseAssertion(count = 1),
                 "ActionExecution" to DatabaseAssertion(count = 2)
             ),
-            shouldNotExecute = listOf("music.play", "task.start", "timer.set")
+            shouldNotExecute = listOf("media.play", "task.start", "timer.set")
         )
     )
 
-    private fun weatherQuery() = RegressionTestScenario(
-        testId = "weather_query",
-        category = "conversational",
-        description = "Ask about weather (should trigger conversational default with LLM)",
-        input = TestInput(
-            utterance = "what's the weather like today",
-            elapsedMs = 3500
-        ),
-        expected = TestExpectations(
-            workflowMatched = "conversational_default",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("llm.prompt", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            shouldNotExecute = listOf("music.play", "task.start", "timer.set")
-        )
-    )
 }

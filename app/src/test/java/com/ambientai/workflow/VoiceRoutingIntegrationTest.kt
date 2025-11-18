@@ -39,7 +39,8 @@ class VoiceRoutingIntegrationTest {
         incompletenessDetector = IncompletenessDetector()
         workflowRepo = FakeWorkflowDefinitionRepository()
         llmService = mockk(relaxed = true)
-        router = WorkflowRouter(workflowRepo, llmService)
+        val playbackStateManager = mockk<com.ambientai.core.music.PlaybackStateManager>(relaxed = true)
+        router = WorkflowRouter(workflowRepo, llmService, playbackStateManager)
     }
 
     // ===== PARTIAL TRANSCRIPT SEQUENCES =====

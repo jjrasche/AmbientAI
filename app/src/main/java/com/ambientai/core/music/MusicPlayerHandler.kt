@@ -9,7 +9,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class MusicPlayerHandler @Inject constructor(@ApplicationContext private val context: Context, private val musicScanner: MusicScanner) {
+class MusicPlayerHandler @Inject constructor(@ApplicationContext private val context: Context, private val musicScanner: MusicScanner, private val playbackStateManager: PlaybackStateManager) {
     private var serviceStarted = false
 
     fun execute(actionName: String, input: JSONObject) = when (actionName) {
@@ -33,7 +33,18 @@ class MusicPlayerHandler @Inject constructor(@ApplicationContext private val con
         "music.stop" -> { ensureServiceStarted(); sendCommandToService(MusicPlayerService.ACTION_STOP, input); successResult(mapOf("message" to "Stopped")) }
         "music.next" -> { ensureServiceStarted(); sendCommandToService(MusicPlayerService.ACTION_NEXT, input); successResult(mapOf("message" to "Playing next song")) }
         "music.previous" -> { ensureServiceStarted(); sendCommandToService(MusicPlayerService.ACTION_PREVIOUS, input); successResult(mapOf("message" to "Playing previous song")) }
-        "music.getNowPlaying" -> { ensureServiceStarted(); sendCommandToService(MusicPlayerService.ACTION_GET_NOW_PLAYING, input); successResult(mapOf("message" to "Retrieving now playing")) }
+        "music.getNowPlaying" -> {
+            val song = playbackStateManager.getCurrentSong()
+            song?.let {
+                successResult(mapOf(
+                    "song" to it.title,
+                    "artist" to it.artist,
+                    "album" to it.album,
+                    "isPlaying" to playbackStateManager.isPlaying(),
+                    "response" to "${it.title} by ${it.artist}"
+                ))
+            } ?: errorResult("Nothing is playing")
+        }
         else -> errorResult("Unknown action: $actionName")
     }
     private fun successResult(data: Map<String, Any?> = emptyMap()) = JSONObject().apply { put("success", true); data.forEach { (k, v) -> put(k, v) } }
