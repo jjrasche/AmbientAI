@@ -25,6 +25,7 @@ interface ITaskRepository {
     fun getMostRecentPaused(): Task?
     fun startTask(name: String): Task
     fun pauseTask(): Task
+    fun resumeTask(taskId: Long? = null): Task
     fun completeTask(): Task
 
     // TaskSession operations

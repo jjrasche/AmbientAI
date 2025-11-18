@@ -12,9 +12,10 @@ class TaskManager @Inject constructor(
     private val repo: ITaskRepository
 ) {
 
-    fun execute(actionName: String, input: JSONObject) = when (actionName) { "task.start" -> start(input); "task.pause" -> pause(); "task.complete" -> complete(); "task.getActive" -> getActive(); "task.getNonCompleted" -> getNonCompleted(); else -> throw Exception("Unknown action: $actionName") }
+    fun execute(actionName: String, input: JSONObject) = when (actionName) { "task.start" -> start(input); "task.pause" -> pause(); "task.resume" -> resume(input); "task.complete" -> complete(); "task.getActive" -> getActive(); "task.getNonCompleted" -> getNonCompleted(); else -> throw Exception("Unknown action: $actionName") }
     private fun start(input: JSONObject) = input.optString("name", null)?.takeIf { it.isNotBlank() }?.let { name -> runCatching { pause() }; JSONObject(taskToMap(repo.startTask(name))) } ?: throw Exception("${if (input.optString("name", null) == null) "Missing required field: name" else "Task name cannot be empty"}")
     private fun pause() = JSONObject(taskToMap(repo.pauseTask()))
+    private fun resume(input: JSONObject) = JSONObject(taskToMap(repo.resumeTask(input.optLong("taskId").takeIf { it != 0L })))
     private fun complete() = JSONObject(taskToMap(repo.completeTask()))
     private fun getActive() = JSONObject(taskToMap(repo.getActive()))
     private fun getNonCompleted() = JSONObject(mapOf("tasks" to (repo.getByStatus(TaskStatus.ACTIVE) + repo.getByStatus(TaskStatus.PAUSED)).map(::taskToMap)))

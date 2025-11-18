@@ -44,6 +44,12 @@ class TaskRepository @Inject constructor(
         task.status = TaskStatus.PAUSED
         taskBox.put(task)
     }
+    override fun resumeTask(taskId: Long?) = (taskId?.let { taskBox.get(it) } ?: getMostRecentPaused() ?: throw Exception("No paused task to resume")).also { task ->
+        if (task.status != TaskStatus.PAUSED) throw Exception("Task is not paused (status: ${task.status})")
+        task.status = TaskStatus.ACTIVE
+        taskBox.put(task)
+        sessionBox.put(TaskSession(taskId = task.id, startedAt = System.currentTimeMillis()))
+    }
     override fun completeTask() = getActive().also {
         it.currentSession()?.apply { endedAt = System.currentTimeMillis() }?.let(sessionBox::put)
         it.status = TaskStatus.COMPLETED
