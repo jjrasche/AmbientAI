@@ -13,7 +13,6 @@ class DebugServer @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val transcriptRepo: com.ambientai.data.repositories.ITranscriptRepository,
     private val workflowRepo: com.ambientai.data.repositories.IWorkflowDefinitionRepository,
-    private val sttSimulator: SttSimulator,
     private val workflowSeeder: com.ambientai.data.WorkflowSeeder,
     private val mediaHistoryRepo: com.ambientai.data.repositories.IMediaHistoryRepository,
     private val mediaIntelligence: com.ambientai.core.media.MediaIntelligenceManager,
@@ -79,10 +78,6 @@ class DebugServer @Inject constructor(
                 uri == "/api/media_history" -> handleMediaHistory(session)
                 uri == "/api/command" && method == Method.POST -> handleCommand(session)
                 uri.startsWith("/api/workflow/trigger/") -> handleTriggerWorkflow(uri.substringAfterLast("/"))
-                uri == "/api/test/partial" && method == Method.POST -> handleTestPartial(session)
-                uri == "/api/test/sequence" && method == Method.POST -> handleTestSequence(session)
-                uri == "/api/test/utterance_end" && method == Method.POST -> handleTestUtteranceEnd(session)
-                uri == "/api/test/scenarios" -> handleTestScenarios()
                 uri == "/api/config" -> handleGetConfig()
                 uri == "/api/config/set" && method == Method.POST -> handleSetConfig(session)
                 uri == "/api/media/download" && method == Method.POST -> handleMediaDownload(session)
@@ -314,46 +309,6 @@ curl -X POST http://localhost:8080/api/lyrics/search -d '{"query":"heartbreak","
             put("type", e::class.simpleName)
         }.toString()
     )
-    private fun handleTestPartial(session: IHTTPSession): Response {
-        val body = getRequestBody(session)
-        val json = JSONObject(body)
-        val text = json.getString("text")
-        val elapsedMs = json.getLong("elapsed_ms")
-        val confidence = json.optDouble("confidence", 0.85).toFloat()
-        val result = sttSimulator.testPartialRouting(text, elapsedMs, confidence)
-        return jsonResponse(result.toJson())
-    }
-    private fun handleTestSequence(session: IHTTPSession): Response {
-        val body = getRequestBody(session)
-        val json = JSONObject(body)
-        val partialsArray = json.getJSONArray("partials")
-        val partials = mutableListOf<PartialTranscript>()
-        for (i in 0 until partialsArray.length()) {
-            val p = partialsArray.getJSONObject(i)
-            partials.add(PartialTranscript(
-                text = p.getString("text"),
-                elapsedMs = p.getLong("elapsed_ms"),
-                confidence = p.optDouble("confidence", 0.85).toFloat()
-            ))
-        }
-        val result = sttSimulator.testSequence(partials)
-        return jsonResponse(result.toJson())
-    }
-    private fun handleTestUtteranceEnd(session: IHTTPSession): Response {
-        val body = getRequestBody(session)
-        val json = JSONObject(body)
-        val text = json.getString("text")
-        val elapsedMs = json.getLong("elapsed_ms")
-        val result = sttSimulator.testUtteranceEnd(text, elapsedMs)
-        return jsonResponse(result.toJson())
-    }
-    private fun handleTestScenarios(): Response {
-        val scenarios = sttSimulator.generateScenarios()
-        val json = JSONArray().apply {
-            scenarios.forEach { put(it.toJson()) }
-        }
-        return jsonResponse(json)
-    }
     private fun handleGetConfig(): Response {
         val config = JSONObject().apply {
             put("MIN_ELAPSED_BEFORE_ROUTING_MS", com.ambientai.core.workflow.RoutingConfig.MIN_ELAPSED_BEFORE_ROUTING_MS)

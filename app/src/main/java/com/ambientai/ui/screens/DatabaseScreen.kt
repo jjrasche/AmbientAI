@@ -38,6 +38,7 @@ import android.util.Log
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.platform.LocalContext
 
 private fun String.truncate(maxLength: Int) = if (length > maxLength) take(maxLength) + "..." else this
 @OptIn(ExperimentalFoundationApi::class)
@@ -49,7 +50,8 @@ fun DatabaseScreen(transcriptRepository: ITranscriptRepository, actionExecutionR
     val workflows by workflowDefinitionRepository.getAllWorkflows().collectAsStateWithLifecycle(initialValue = emptyList())
     val workflowExecutions by workflowExecutionRepository.getRecentExecutions().collectAsStateWithLifecycle(initialValue = emptyList())
     val logEntries by logEntryRepository.getAllLogs().collectAsStateWithLifecycle(initialValue = emptyList())
-    val workflowSeeder = WorkflowSeeder(workflowDefinitionRepository)
+    val context = LocalContext.current
+    val workflowSeeder = WorkflowSeeder(workflowDefinitionRepository, context)
     var selectedTab by remember { mutableStateOf(0) }
     Column(modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = "Database", style = MaterialTheme.typography.headlineMedium); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = onNavigateToReview) { Text("Review Workflows") }; Button(onClick = onBack) { Text("Back") } } }

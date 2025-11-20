@@ -10,7 +10,6 @@ import com.ambientai.data.entities.TaskStatus
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.core.stt.DeepgramSttService
 import com.ambientai.data.repositories.*
-import com.ambientai.debug.SttSimulator
 import com.ambientai.workflow.WorkflowRouter
 import com.ambientai.workflow.WorkflowExecutor
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -25,7 +24,6 @@ import javax.inject.Singleton
 @Singleton
 class RegressionTestExecutor @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val sttSimulator: SttSimulator,
     private val workflowRouter: WorkflowRouter,
     private val workflowExecutor: WorkflowExecutor,
     private val workflowExecRepo: IWorkflowExecutionRepository,
@@ -133,12 +131,14 @@ class RegressionTestExecutor @Inject constructor(
             )
             val savedTranscript = transcriptRepo.save(transcript)
 
-            // 5. Execute the test - route and execute workflow
-            val match = workflowRouter.route(transcriptionText, savedTranscript.id, isPartial = false)
-            if (match != null) {
-                Log.d(TAG, "  → Matched workflow: ${match.definition.name}")
-                Log.d(TAG, "  → Context variables: ${match.context.variables.keys}")
-                workflowExecutor.execute(match)
+            // 5. Execute the test - route and execute workflow(s)
+            val matches = workflowRouter.route(transcriptionText, savedTranscript.id, isPartial = false)
+            if (matches.isNotEmpty()) {
+                Log.d(TAG, "  → Matched ${matches.size} workflow(s): ${matches.map { it.definition.name }}")
+                matches.forEach { match ->
+                    Log.d(TAG, "  → Executing: ${match.definition.name}")
+                    workflowExecutor.execute(match)
+                }
             } else {
                 Log.w(TAG, "  → No workflow matched for: $transcriptionText")
             }

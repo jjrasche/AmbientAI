@@ -22,30 +22,84 @@ class WorkflowRouter @Inject constructor(
         private const val SHORT_TRANSCRIPT_THRESHOLD = 10
     }
     fun loadWorkflows() { workflows = workflowRepo.getEnabled() }
-    fun route(transcript: String, transcriptId: Long, isPartial: Boolean = false): WorkflowMatch? = workflows.takeIf { it.isNotEmpty() }?.let {
+
+    private data class PositionedMatch(
+        val workflow: WorkflowDefinition,
+        val trigger: String,
+        val position: Int,
+        val length: Int
+    )
+
+    /**
+     * Route a transcript to workflows, finding all non-overlapping trigger matches.
+     * Returns list of WorkflowMatch in order of trigger position.
+     */
+    fun route(transcript: String, transcriptId: Long, isPartial: Boolean = false): List<WorkflowMatch> {
+        if (workflows.isEmpty()) return emptyList()
+
         val wordCount = transcript.split("\\s+".toRegex()).size
         val lowerTranscript = transcript.lowercase()
         Log.d(TAG, "🔍 ROUTING: \"$transcript\" ($wordCount words)${if (isPartial) " [PARTIAL]" else ""}")
-        val matches = workflows.mapNotNull { workflow -> if (checkConditions(workflow)) findMatchingTrigger(workflow, lowerTranscript)?.let { matchedTrigger -> WorkflowMatchCandidate(definition = workflow, matchedTrigger = matchedTrigger, matchLength = matchedTrigger.length) } else null }
-        Log.d(TAG, "   ↳ Found ${matches.size} exact trigger matches")
-        when {
-            matches.isEmpty() && wordCount < SHORT_TRANSCRIPT_THRESHOLD && !isPartial -> {
-                Log.d(TAG, "🧠 SHORT TRANSCRIPT ($wordCount words) - attempting LLM intent extraction")
-                extractIntentWithLlm(transcript, transcriptId)
-            }
-            matches.isEmpty() -> createConversationalDefault(transcript, transcriptId)
-            matches.size == 1 -> createWorkflowMatch(matches.first(), transcript, transcriptId)
-            matches.size > 1 -> {
-                val longestMatch = matches.maxByOrNull { it.matchLength }!!
-                val ambiguous = matches.filter { it.matchLength == longestMatch.matchLength }
-                if (ambiguous.size == 1) {
-                    Log.d(TAG, "   ↳ Multiple matches, selecting longest: ${longestMatch.definition.name}")
-                    createWorkflowMatch(longestMatch, transcript, transcriptId)
-                } else {
-                    throw MultipleMatchException(transcript = transcript, matchedWorkflows = ambiguous.map { it.definition.name })
+
+        // Find all trigger matches with their positions
+        val allMatches = mutableListOf<PositionedMatch>()
+        workflows.forEach { workflow ->
+            if (checkConditions(workflow)) {
+                parseTriggers(workflow.definition).forEach { trigger ->
+                    val triggerLower = trigger.lowercase()
+                    var searchStart = 0
+                    while (true) {
+                        val position = lowerTranscript.indexOf(triggerLower, searchStart)
+                        if (position == -1) break
+                        allMatches.add(PositionedMatch(workflow, trigger, position, trigger.length))
+                        searchStart = position + 1
+                    }
                 }
             }
-            else -> throw MultipleMatchException(transcript = transcript, matchedWorkflows = matches.map { it.definition.name })
+        }
+
+        // If no matches, try LLM extraction or conversational default
+        if (allMatches.isEmpty()) {
+            Log.d(TAG, "   ↳ No trigger matches found")
+            return if (wordCount < SHORT_TRANSCRIPT_THRESHOLD && !isPartial) {
+                Log.d(TAG, "🧠 SHORT TRANSCRIPT ($wordCount words) - attempting LLM intent extraction")
+                extractIntentWithLlm(transcript, transcriptId)?.let { listOf(it) } ?: listOf(createConversationalDefault(transcript, transcriptId))
+            } else {
+                listOf(createConversationalDefault(transcript, transcriptId))
+            }
+        }
+
+        // Sort by position, then by trigger length (prefer longer matches)
+        allMatches.sortWith(compareBy({ it.position }, { -it.length }))
+
+        // Remove overlapping matches (keep longest at each position range)
+        val selectedMatches = mutableListOf<PositionedMatch>()
+        var lastEndPosition = -1
+
+        allMatches.forEach { match ->
+            if (match.position >= lastEndPosition) {
+                val existing = selectedMatches.lastOrNull()
+                if (existing != null && existing.position == match.position && match.length > existing.length) {
+                    selectedMatches.removeLast()
+                    selectedMatches.add(match)
+                    lastEndPosition = match.position + match.length
+                } else if (existing == null || existing.position != match.position) {
+                    selectedMatches.add(match)
+                    lastEndPosition = match.position + match.length
+                }
+            }
+        }
+
+        Log.d(TAG, "   ↳ Found ${selectedMatches.size} workflow(s): ${selectedMatches.map { "${it.workflow.name}@${it.position}" }}")
+
+        // Create WorkflowMatch for each, with appropriate transcript segment
+        return selectedMatches.mapIndexed { index, match ->
+            val segmentStart = match.position
+            val segmentEnd = if (index < selectedMatches.size - 1) selectedMatches[index + 1].position else transcript.length
+            val segment = transcript.substring(segmentStart, segmentEnd).trim()
+                .replace(Regex("\\b(no wait|wait no|actually|never mind)\\b", RegexOption.IGNORE_CASE), "")
+                .trim()
+            createWorkflowMatch(WorkflowMatchCandidate(match.workflow, match.trigger, match.length), segment, transcriptId)
         }
     }
     private fun extractIntentWithLlm(transcript: String, transcriptId: Long): WorkflowMatch? {

@@ -61,7 +61,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act
         val partial = Partial("pause", elapsedMs = 1200, confidence = 0.95f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val isIncomplete = incompletenessDetector.isIncomplete(
             partial.text,
             wordCount = 1,
@@ -86,7 +86,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act
         val partial = Partial("next", elapsedMs = 1500, confidence = 0.92f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val isIncomplete = incompletenessDetector.isIncomplete(
             partial.text,
             wordCount = 1,
@@ -113,7 +113,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act
         val partial = Partial("set timer for", elapsedMs = 2500, confidence = 0.85f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val isIncomplete = incompletenessDetector.isIncomplete(
             partial.text,
             wordCount = 3,
@@ -145,7 +145,7 @@ class VoiceRoutingIntegrationTest {
 
         val incomplete = partials[0].let { partial ->
             val wordCount = partial.text.split("\\s+".toRegex()).size
-            val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+            val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
             incompletenessDetector.isIncomplete(partial.text, wordCount, match?.definition)
         }
 
@@ -247,7 +247,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act
         val triggerOnly = Partial("play", elapsedMs = 1500, confidence = 0.90f)
-        val match = router.route(triggerOnly.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(triggerOnly.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val isIncomplete = incompletenessDetector.isIncomplete(
             triggerOnly.text,
             wordCount = 1,
@@ -276,7 +276,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act
         val partial = Partial("pause", elapsedMs = 1200, confidence = 0.95f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val isIncomplete = incompletenessDetector.isIncomplete(
             partial.text,
             wordCount = 1,
@@ -391,7 +391,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act - Even though ends with preposition, it's a final transcript
         val final = Partial("set timer for", elapsedMs = 3000, confidence = 0.85f)
-        val match = router.route(final.text, transcriptId = 1L, isPartial = false)
+        val match = router.route(final.text, transcriptId = 1L, isPartial = false).firstOrNull()
 
         // Assert
         assertNotNull(match)

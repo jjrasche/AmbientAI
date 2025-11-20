@@ -202,7 +202,8 @@ class VoiceListeningService : Service() {
             return@launch
         }
         try {
-            val match = workflowRouter.route(partialText, -1, isPartial = true)
+            val matches = workflowRouter.route(partialText, -1, isPartial = true)
+            val match = matches.firstOrNull()
             if (match != null && match.definition.name != "conversational_default") {
                 Log.d(TAG, "🎯 INSTANT TRIGGER [${elapsedMs}ms]: ${match.definition.name} from \"$partialText\"")
                 workflowTriggeredDuringRecording = true
@@ -221,7 +222,7 @@ class VoiceListeningService : Service() {
         val savedTranscript = transcriptRepository.save(transcript)
         Log.d(TAG, "💾 SAVED TRANSCRIPT: id=${savedTranscript.id}")
         updateGoldenDatasetWithWorkflow(savedTranscript.id, match.definition.name)
-        val matchWithTranscriptId = workflowRouter.route(partialText, savedTranscript.id, isPartial = true)
+        val matchWithTranscriptId = workflowRouter.route(partialText, savedTranscript.id, isPartial = true).firstOrNull()
         val result = matchWithTranscriptId?.let { workflowExecutor.execute(it) }
         when (result) {
             is WorkflowResult.Failure -> Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}")
@@ -280,27 +281,25 @@ class VoiceListeningService : Service() {
         try {
             Log.d(TAG, "🔀 ROUTING: \"$text\"")
             updateNotification("Processing...")
-            val match = workflowRouter.route(text, transcriptId)
-            if (match == null) {
+            val matches = workflowRouter.route(text, transcriptId)
+            if (matches.isEmpty()) {
                 Log.w(TAG, "⚠ NO WORKFLOW MATCH")
                 speak("No workflow matched.")
             } else {
-                Log.d(TAG, "✓ MATCHED WORKFLOW: ${match.definition.name}")
-                listeners.forEach { it.onWorkflowStarted(match.definition.name, text) }
-                updateGoldenDatasetWithWorkflow(transcriptId, match.definition.name)
-                val result = workflowExecutor.execute(match)
-                when (result) {
-                    is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); speak("Workflow failed: ${result.error}") }
-                    null -> { Log.e(TAG, "✖ WORKFLOW ERROR: null result"); speak("System error.") }
-                    else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
+                Log.d(TAG, "✓ MATCHED ${matches.size} WORKFLOW(S): ${matches.map { it.definition.name }}")
+                matches.forEachIndexed { index, match ->
+                    if (index == 0) {
+                        listeners.forEach { it.onWorkflowStarted(match.definition.name, text) }
+                        updateGoldenDatasetWithWorkflow(transcriptId, match.definition.name)
+                    }
+                    val result = workflowExecutor.execute(match)
+                    when (result) {
+                        is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); if (matches.size == 1) speak("Workflow failed: ${result.error}") }
+                        else -> Log.d(TAG, "✓ WORKFLOW ${index + 1}/${matches.size} SUCCEEDED")
+                    }
                 }
             }
             resumeMusicIfNeeded()
-            updateNotification("Ready - Long press power button to speak")
-        } catch (e: MultipleMatchException) {
-            Log.w(TAG, "⚠ MULTIPLE MATCHES: ${e.message}")
-            resumeMusicIfNeeded()
-            speak("Multiple workflows matched. Please be more specific.")
             updateNotification("Ready - Long press power button to speak")
         } catch (e: Exception) {
             Log.e(TAG, "✖ WORKFLOW EXCEPTION: ${e.message}", e)

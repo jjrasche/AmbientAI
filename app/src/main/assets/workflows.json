@@ -1,0 +1,433 @@
+{
+  "workflows": [
+    {
+      "name": "start_task",
+      "enabled": true,
+      "definition": {
+        "triggers": ["start task", "working on", "begin task", "start a"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Extract task name from user input. Return only the task name, nothing else.",
+              "userPrompt": "$transcript"
+            },
+            "output": "taskName"
+          },
+          {
+            "action": "task.start",
+            "input": {"name": "$taskName.response"},
+            "output": "task"
+          },
+          {
+            "action": "tts.speak",
+            "input": {"text": "Started $task.name"}
+          }
+        ]
+      }
+    },
+    {
+      "name": "pause_task",
+      "enabled": true,
+      "definition": {
+        "triggers": ["pause task", "stop task", "taking a break"],
+        "steps": [
+          {"action": "task.pause", "output": "task"},
+          {"action": "tts.speak", "input": {"text": "Paused $task.name"}}
+        ]
+      }
+    },
+    {
+      "name": "complete_task",
+      "enabled": true,
+      "definition": {
+        "triggers": ["complete task", "done with task", "finished task"],
+        "steps": [
+          {"action": "task.complete", "output": "task"},
+          {"action": "tts.speak", "input": {"text": "Completed $task.name"}}
+        ]
+      }
+    },
+    {
+      "name": "resume_task",
+      "enabled": true,
+      "definition": {
+        "triggers": ["resume task", "continue task", "unpause task"],
+        "steps": [
+          {"action": "task.resume", "output": "task"},
+          {"action": "tts.speak", "input": {"text": "Resumed $task.name"}}
+        ]
+      }
+    },
+    {
+      "name": "task_status",
+      "enabled": true,
+      "definition": {
+        "triggers": ["current task", "what am I working on", "task status", "how long"],
+        "steps": [
+          {"action": "task.getActive", "output": "task"},
+          {"action": "tts.speak", "input": {"text": "$task.elapsed on $task.name"}}
+        ]
+      }
+    },
+    {
+      "name": "switch_task",
+      "enabled": true,
+      "definition": {
+        "triggers": ["switch to", "switch task", "now working on", "back to"],
+        "requiresInput": true,
+        "steps": [
+          {"action": "task.getNonCompleted", "output": "available"},
+          {
+            "action": "control.if",
+            "condition": "$available.tasks.length === 0",
+            "then": [
+              {"action": "tts.speak", "input": {"text": "No tasks available. Creating new task."}},
+              {
+                "action": "llm.prompt",
+                "input": {
+                  "systemPrompt": "Extract task name from user input. Return only the task name, nothing else.",
+                  "userPrompt": "$transcript"
+                },
+                "output": "taskName"
+              },
+              {"action": "task.start", "input": {"name": "$taskName.response"}, "output": "task"},
+              {"action": "tts.speak", "input": {"text": "Started $task.name"}}
+            ],
+            "else": [
+              {
+                "action": "llm.prompt",
+                "input": {
+                  "systemPrompt": "You are a task matcher. Given a user's voice input and a list of tasks, determine which task they're referring to. Return ONLY valid JSON. Output format: {\"taskId\": <id or null>, \"reason\": \"brief explanation\"}",
+                  "userPrompt": "$transcript\n\nAvailable tasks:\n$available.tasks",
+                  "temperature": 0.3,
+                  "maxTokens": 50
+                },
+                "output": "llmResponse"
+              },
+              {
+                "action": "control.if",
+                "condition": "$llmResponse.response.taskId !== null",
+                "then": [
+                  {"action": "task.resume", "input": {"taskId": "$llmResponse.response.taskId"}, "output": "task"},
+                  {"action": "tts.speak", "input": {"text": "Switched to $task.name"}}
+                ],
+                "else": [
+                  {"action": "tts.speak", "input": {"text": "Couldn't match task. Creating new."}},
+                  {
+                    "action": "llm.prompt",
+                    "input": {
+                      "systemPrompt": "Extract task name from user input. Return only the task name, nothing else.",
+                      "userPrompt": "$transcript"
+                    },
+                    "output": "taskName"
+                  },
+                  {"action": "task.start", "input": {"name": "$taskName.response"}, "output": "task"},
+                  {"action": "tts.speak", "input": {"text": "Started $task.name"}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "log_entry",
+      "enabled": true,
+      "definition": {
+        "triggers": ["log this"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Classify what's being logged and extract data.\n\nValid types: medication, food, supplement, activity, symptom, unknown\n\nReturn JSON:\n{\n  \"type\": \"<one of the valid types>\",\n  \"data\": {\n    // For medication: {\"name\": \"string\", \"dosage\": \"string\"}\n    // For food: {\"name\": \"string\", \"quantity\": \"string\", \"meal\": \"string\"}\n    // For supplement: {\"name\": \"string\", \"amount\": \"string\"}\n    // For activity: {\"name\": \"string\", \"duration\": \"string\"}\n    // For symptom: {\"name\": \"string\", \"severity\": \"string\"}\n    // Extract whatever fields make sense for the type\n  }\n}\n\nIf unclear, use type: \"unknown\" and capture what you can.",
+              "userPrompt": "$transcript",
+              "temperature": 0.3,
+              "maxTokens": 150
+            },
+            "output": "classification"
+          },
+          {
+            "action": "log.write",
+            "input": {
+              "type": "$classification.response.type",
+              "data": "$classification.response.data",
+              "transcriptId": "$transcriptId"
+            },
+            "output": "entry"
+          },
+          {"action": "tts.speak", "input": {"text": "Logged $classification.response.type"}}
+        ]
+      }
+    },
+    {
+      "name": "thinker",
+      "enabled": false,
+      "definition": {
+        "triggers": {
+          "keywords": ["update narrative", "what do you know", "tell me what you understand"],
+          "onWorkflowComplete": ["start_task", "pause_task", "complete_task", "switch_task", "log_entry"]
+        },
+        "steps": [
+          {"action": "state.gather", "output": "state"},
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "You are the internal reasoning system for an ambient AI assistant. Synthesize current state into a 2-3 sentence first-person narrative focusing on: what user is doing (GOALS), why and how it's going (REASONING), key patterns to remember (MEMORY). Be concise and focus on actionable understanding.",
+              "userPrompt": "Current state:\n$state",
+              "temperature": 0.7,
+              "maxTokens": 200
+            },
+            "output": "narrative"
+          },
+          {
+            "action": "narrative.save",
+            "input": {
+              "text": "$narrative.response",
+              "stateSnapshot": "$state"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "review_workflow",
+      "enabled": false,
+      "definition": {
+        "triggers": [],
+        "steps": [
+          {
+            "action": "workflow.getExecutionData",
+            "input": {
+              "workflowId": "$context.targetWorkflowId",
+              "limit": 100
+            },
+            "output": "executionData"
+          },
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "You are analyzing workflow execution data to suggest improvements. Return ONLY valid JSON, no markdown fences.",
+              "userPrompt": "Analyze workflow execution data and suggest improvements.\n\nWORKFLOW: $executionData.workflow.name\nStatus: $executionData.workflow.enabled\n\nREVIEW NOTES:\n$executionData.workflow.reviewNotes\n\nEXECUTION SUMMARY:\n- Total: $executionData.summary.totalExecutions\n- Successful: $executionData.summary.successfulExecutions\n- Failed: $executionData.summary.failedExecutions\n- LLM actions: $executionData.summary.llmActions\n- Graded: $executionData.summary.gradedLlmActions\n- Avg grade: $executionData.summary.avgLlmGrade\n\nRECENT EXECUTIONS:\n$executionData.recentExecutions\n\nFAILED EXECUTIONS:\n$executionData.failedExecutions\n\nFAILED ACTIONS:\n$executionData.failedActions\n\nGRADED ACTIONS:\n$executionData.gradedActions\n\nReturn JSON:\n{\n  \"workflow_refinements\": [{\"type\": \"trigger_add|trigger_remove|prompt_update|tts_update\", \"path\": \"path\", \"value\": \"new\", \"old_value\": \"old\", \"rationale\": \"why\"}],\n  \"workflow_expansions\": [{\"name\": \"name\", \"triggers\": [\"phrases\"], \"rationale\": \"why\"}],\n  \"llm_grading_insights\": [{\"action_id\": 123, \"suggested_grade\": 4, \"notes\": \"why\"}]\n}"
+            },
+            "output": "suggestions"
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_time",
+      "enabled": true,
+      "definition": {
+        "triggers": ["give me the time", "what's the time", "what time", "get time"],
+        "steps": [
+          {"action": "time.get", "input": {}, "output": "time"},
+          {"action": "tts.speak", "input": {"text": "$time.response"}}
+        ]
+      }
+    },
+    {
+      "name": "set_timer",
+      "enabled": true,
+      "definition": {
+        "triggers": ["set a timer", "set timer", "set alarm", "set an alarm", "timer for", "start a timer"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Extract the timer duration from the user's input. Return ONLY valid JSON with no markdown fences. Format: {\"minutes\": <number>, \"seconds\": <number>}. If they say '5 minutes', return {\"minutes\": 5, \"seconds\": 0}. If they say '30 seconds', return {\"minutes\": 0, \"seconds\": 30}.",
+              "userPrompt": "$transcript",
+              "temperature": 0.1,
+              "maxTokens": 100
+            },
+            "output": "duration"
+          },
+          {
+            "action": "timer.set",
+            "input": {
+              "minutes": "$duration.response.minutes",
+              "seconds": "$duration.response.seconds"
+            },
+            "output": "timer"
+          },
+          {"action": "tts.speak", "input": {"text": "Timer set for $timer.message"}}
+        ]
+      }
+    },
+    {
+      "name": "cancel_timer",
+      "enabled": true,
+      "definition": {
+        "triggers": ["cancel timer", "stop timer", "cancel alarm", "clear timer"],
+        "steps": [
+          {"action": "timer.cancel", "output": "result"},
+          {"action": "tts.speak", "input": {"text": "$result.message"}}
+        ]
+      }
+    },
+    {
+      "name": "play_music",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["play"],
+          "conditions": {}
+        },
+        "requiresInput": true,
+        "steps": [
+          {"action": "media.play", "input": {"query": "$transcript"}, "output": "musicResult"},
+          {
+            "action": "control.if",
+            "condition": "$musicResult.success === false",
+            "then": [
+              {"action": "media.searchAndSelect", "input": {"query": "$transcript", "max_results": 5}, "output": "selected"},
+              {
+                "action": "control.if",
+                "condition": "$selected.success === true",
+                "then": [
+                  {"action": "media.download", "input": {"video_id": "$selected.video_id"}, "output": "downloaded"},
+                  {
+                    "action": "control.if",
+                    "condition": "$downloaded.success === true",
+                    "then": [
+                      {"action": "media.play", "input": {"query": "$downloaded.title"}, "output": "playResult"},
+                      {"action": "tts.speak", "input": {"text": "Playing $downloaded.title"}}
+                    ],
+                    "else": [
+                      {"action": "tts.speak", "input": {"text": "Download failed"}}
+                    ]
+                  }
+                ],
+                "else": [
+                  {"action": "tts.speak", "input": {"text": "Not found"}}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "pause_music",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["pause", "pause music", "stop music"],
+          "conditions": {"playbackActive": true}
+        },
+        "steps": [
+          {"action": "media.pause", "output": "result"},
+          {"action": "tts.speak", "input": {"text": "Music paused"}}
+        ]
+      }
+    },
+    {
+      "name": "resume_music",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["resume", "resume music", "continue", "keep playing"],
+          "conditions": {"playbackActive": false}
+        },
+        "steps": [
+          {"action": "media.resume", "output": "result"},
+          {"action": "tts.speak", "input": {"text": "Resuming music"}}
+        ]
+      }
+    },
+    {
+      "name": "next_track",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["next", "next song", "skip", "skip song"],
+          "conditions": {"playbackActive": true}
+        },
+        "steps": [
+          {"action": "media.next"}
+        ]
+      }
+    },
+    {
+      "name": "previous_track",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["previous", "previous song", "go back", "last song"],
+          "conditions": {"playbackActive": true}
+        },
+        "steps": [
+          {"action": "media.previous"}
+        ]
+      }
+    },
+    {
+      "name": "now_playing",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["what's playing", "what song is this", "what's this song", "current song"],
+          "conditions": {}
+        },
+        "steps": [
+          {"action": "media.getNowPlaying", "output": "result"},
+          {"action": "tts.speak", "input": {"text": "$result.response"}}
+        ]
+      }
+    },
+    {
+      "name": "stop_music",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["stop", "stop music", "stop playing", "stop that"],
+          "conditions": {"playbackActive": true}
+        },
+        "steps": [
+          {"action": "media.stop", "output": "result"},
+          {"action": "tts.speak", "input": {"text": "Music stopped"}}
+        ]
+      }
+    },
+    {
+      "name": "list_all_songs",
+      "enabled": true,
+      "definition": {
+        "triggers": {
+          "keywords": ["list all songs", "show all music", "list music library", "debug music"],
+          "conditions": {}
+        },
+        "requiresInput": false,
+        "steps": [
+          {"action": "media.scan", "output": "result"},
+          {"action": "ui.showModal", "input": {"title": "Music Library ($result.totalSongs songs)", "message": "$result.songList"}},
+          {"action": "tts.speak", "input": {"text": "$result.summary"}}
+        ]
+      }
+    },
+    {
+      "name": "llm_response",
+      "enabled": true,
+      "definition": {
+        "triggers": ["what do you think", "your thoughts", "any ideas", "help me think"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "You are a helpful AI assistant. Provide a thoughtful, conversational response to the user's question or request.",
+              "userPrompt": "$transcript",
+              "temperature": 0.7,
+              "maxTokens": 300
+            },
+            "output": "response"
+          },
+          {"action": "tts.speak", "input": {"text": "$response.response"}}
+        ]
+      }
+    }
+  ]
+}

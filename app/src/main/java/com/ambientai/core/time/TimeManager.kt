@@ -68,13 +68,17 @@ class TimeManager @Inject constructor(@ApplicationContext private val context: C
             put("message", formatDuration(minutes, seconds))
         }
     }
-    private fun cancelTimer(input: JSONObject): JSONObject {
-        val intent = Intent(context, TimerReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        alarmManager.cancel(pendingIntent)
-        pendingIntent.cancel()
+    private fun cancelTimer(input: JSONObject): JSONObject = if (activeTimers.isEmpty()) {
+        JSONObject().apply { put("success", false); put("message", "No timer is currently running") }
+    } else {
+        activeTimers.forEach { timerId ->
+            val intent = Intent(context, TimerReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(context, timerId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
         activeTimers.clear()
-        return JSONObject().apply { put("success", true); put("message", "Timer cancelled") }
+        JSONObject().apply { put("success", true); put("message", "Timer cancelled") }
     }
     fun hasActiveTimer(): Boolean = activeTimers.isNotEmpty()
     private fun formatDuration(minutes: Int, seconds: Int) = when {

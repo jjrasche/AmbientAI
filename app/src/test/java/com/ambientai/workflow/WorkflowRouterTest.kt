@@ -53,11 +53,11 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("pause", transcriptId = 1L)
+        val match = router.route("pause", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
-        assertEquals("pause_music", match.definition.name)
+        assertEquals("pause_music", match!!.definition.name)
         assertEquals("pause", match.context.matchedTrigger)
     }
 
@@ -72,7 +72,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("start task grocery shopping", transcriptId = 1L)
+        val match = router.route("start task grocery shopping", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -91,7 +91,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("please play music for me", transcriptId = 1L)
+        val match = router.route("please play music for me", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -109,7 +109,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("pause", transcriptId = 1L)
+        val match = router.route("pause", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -129,7 +129,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("next", transcriptId = 1L)
+        val match = router.route("next", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -149,7 +149,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("play taylor swift", transcriptId = 1L)
+        val match = router.route("play taylor swift", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -167,7 +167,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("play music by radiohead", transcriptId = 1L)
+        val match = router.route("play music by radiohead", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -185,7 +185,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("play song the scientist", transcriptId = 1L)
+        val match = router.route("play song the scientist", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -207,7 +207,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("what is the weather today", transcriptId = 1L)
+        val match = router.route("what is the weather today", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -216,15 +216,15 @@ class WorkflowRouterTest {
     }
 
     @Test
-    fun `returns null when no workflows exist`() {
+    fun `returns empty list when no workflows exist`() {
         // Arrange
         router.loadWorkflows()
 
         // Act
-        val match = router.route("pause", transcriptId = 1L)
+        val matches = router.route("pause", transcriptId = 1L)
 
         // Assert
-        assertNull(match, "Should return null when no workflows exist")
+        assertEquals(emptyList<WorkflowMatch>(), matches, "Should return empty list when no workflows exist")
     }
 
     // ===== LLM INTENT EXTRACTION =====
@@ -246,7 +246,7 @@ class WorkflowRouterTest {
         }
 
         // Act - short transcript (< 10 words) with no exact match
-        val match = router.route("stop", transcriptId = 1L, isPartial = false)
+        val match = router.route("stop", transcriptId = 1L, isPartial = false).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -271,7 +271,7 @@ class WorkflowRouterTest {
         }
 
         // Act
-        val match = router.route("quit", transcriptId = 1L, isPartial = false)
+        val match = router.route("quit", transcriptId = 1L, isPartial = false).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -295,7 +295,7 @@ class WorkflowRouterTest {
         }
 
         // Act
-        val match = router.route("stop", transcriptId = 1L, isPartial = false)
+        val match = router.route("stop", transcriptId = 1L, isPartial = false).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -313,7 +313,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act - short transcript but marked as partial
-        val match = router.route("stop", transcriptId = 1L, isPartial = true)
+        val match = router.route("stop", transcriptId = 1L, isPartial = true).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -331,7 +331,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act - long transcript (> 10 words)
-        val match = router.route("this is a very long utterance with many words that exceeds threshold", transcriptId = 1L, isPartial = false)
+        val match = router.route("this is a very long utterance with many words that exceeds threshold", transcriptId = 1L, isPartial = false).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -356,7 +356,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act - Try to trigger the disabled workflow
-        val match = router.route("pause", transcriptId = 1L)
+        val match = router.route("pause", transcriptId = 1L).firstOrNull()
 
         // Assert - Should fall back to conversational default since "pause" workflow is disabled
         assertNotNull(match)
@@ -383,7 +383,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("test", transcriptId = 1L)
+        val match = router.route("test", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -403,7 +403,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("pause", transcriptId = 42L)
+        val match = router.route("pause", transcriptId = 42L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -421,7 +421,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("start task grocery shopping", transcriptId = 1L)
+        val match = router.route("start task grocery shopping", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -441,7 +441,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("", transcriptId = 1L)
+        val match = router.route("", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -459,7 +459,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("   ", transcriptId = 1L)
+        val match = router.route("   ", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -482,7 +482,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("test", transcriptId = 1L)
+        val match = router.route("test", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -500,7 +500,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("test", transcriptId = 1L)
+        val match = router.route("test", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)
@@ -518,7 +518,7 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act
-        val match = router.route("test", transcriptId = 1L)
+        val match = router.route("test", transcriptId = 1L).firstOrNull()
 
         // Assert
         assertNotNull(match)

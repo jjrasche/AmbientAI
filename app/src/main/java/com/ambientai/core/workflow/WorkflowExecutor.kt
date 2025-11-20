@@ -40,6 +40,18 @@ class WorkflowExecutor @Inject constructor(
     fun loadCompletionTriggers() { completionTriggers = workflowRepo.getEnabled().flatMap { workflow -> runCatching { JSONObject(workflow.definition).optJSONObject("triggers")?.optJSONArray("onWorkflowComplete")?.let { onComplete -> (0 until onComplete.length()).map { onComplete.getString(it) to workflow.id } } ?: emptyList() }.getOrElse { emptyList() } }.groupBy({ it.first }, { it.second }) }
     private suspend fun triggerCompletionWorkflows(completedWorkflowName: String, originalContext: WorkflowExecutionContext) = completionTriggers[completedWorkflowName]?.forEach { workflowId -> runCatching { executeById(workflowId, originalContext.variables) } }
     suspend fun executeById(workflowId: Long, contextOverride: Map<String, Any> = emptyMap()): WorkflowResult = workflowRepo.getById(workflowId)?.let { definition -> WorkflowExecutionContext(workflowId = workflowId, workflowName = definition.name, transcript = "", matchedTrigger = "(programmatic)").also { it.variables.putAll(contextOverride) }.let { execute(WorkflowMatch(definition, it)) } } ?: WorkflowResult.Failure("Workflow $workflowId not found")
+
+    /**
+     * Execute multiple workflows in sequence (for compound commands like
+     * "play music stop that start a task").
+     */
+    suspend fun executeMultiple(matches: List<WorkflowMatch>): List<WorkflowResult> {
+        Log.d(TAG, "⚙ EXECUTING ${matches.size} SEQUENTIAL WORKFLOWS")
+        return matches.mapIndexed { index, match ->
+            Log.d(TAG, "   ↳ Workflow ${index + 1}/${matches.size}: ${match.definition.name}")
+            execute(match)
+        }
+    }
     suspend fun execute(match: WorkflowMatch): WorkflowResult = withContext(Dispatchers.IO) {
         Log.d(TAG, "⚙ EXECUTING WORKFLOW: ${match.definition.name}")
         val startTime = System.currentTimeMillis()
