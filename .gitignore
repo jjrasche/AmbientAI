@@ -81,3 +81,9 @@ objectbox-models/
 
 # Mac
 .DS_Store
+
+# Windows
+nul
+
+# Claude Code local settings
+.claude/settings.local.json
