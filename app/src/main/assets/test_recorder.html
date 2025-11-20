@@ -235,27 +235,27 @@
 
             const testList = document.getElementById('testList');
             testList.innerHTML = filtered.map(scenario => `
-                <div class="test-card" data-test-id="${scenario.test_id}">
+                <div class="test-card" data-test-id="${scenario.testId}">
                     <div class="test-header">
                         <div>
                             <span class="test-category">${scenario.category}</span>
-                            <span class="test-id">${scenario.test_id}</span>
+                            <span class="test-id">${scenario.testId}</span>
                         </div>
                         <div>
-                            <button id="btn-${scenario.test_id}" onclick="toggleRecording('${scenario.test_id}')">
+                            <button id="btn-${scenario.testId}" onclick="toggleRecording('${scenario.testId}')">
                                 Record
                             </button>
-                            <span class="status" id="status-${scenario.test_id}"></span>
+                            <span class="status" id="status-${scenario.testId}"></span>
                         </div>
                     </div>
                     <div class="test-description">${scenario.description}</div>
-                    <div class="test-utterance">"${scenario.input.utterance}"</div>
-                    <div class="transcript-info" id="transcript-${scenario.test_id}"></div>
-                    <div class="action-buttons" id="actions-${scenario.test_id}">
-                        <button class="save-btn" onclick="saveRecordingToTest('${scenario.test_id}')">💾 Save to Test</button>
-                        <button class="download-btn" onclick="downloadAudio('${scenario.test_id}')">📥 Download Audio</button>
+                    <div class="test-utterance">"${scenario.utterance}"</div>
+                    <div class="transcript-info" id="transcript-${scenario.testId}"></div>
+                    <div class="action-buttons" id="actions-${scenario.testId}">
+                        <button class="save-btn" onclick="saveRecordingToTest('${scenario.testId}')">💾 Save to Test</button>
+                        <button class="download-btn" onclick="downloadAudio('${scenario.testId}')">📥 Download Audio</button>
                     </div>
-                    <div class="pull-command" id="pull-${scenario.test_id}"></div>
+                    <div class="pull-command" id="pull-${scenario.testId}"></div>
                 </div>
             `).join('');
         }
@@ -286,14 +286,14 @@
                     return;
                 }
 
-                const scenario = scenarios.find(s => s.test_id === testId);
+                const scenario = scenarios.find(s => s.testId === testId);
                 try {
                     const response = await fetch('/api/test/record/start', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             testId: testId,
-                            expectedUtterance: scenario.input.utterance
+                            expectedUtterance: scenario.utterance
                         })
                     });
                     const data = await response.json();
@@ -353,8 +353,8 @@
                     status.textContent = '✓ Recorded';
                     status.className = 'status success';
 
-                    const scenario = scenarios.find(s => s.test_id === testId);
-                    const expected = scenario.input.utterance;
+                    const scenario = scenarios.find(s => s.testId === testId);
+                    const expected = scenario.utterance;
                     const actual = data.final_transcript;
 
                     transcriptInfo.innerHTML = `
