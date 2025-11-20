@@ -6,14 +6,16 @@ data class RegressionTestScenario(
     val testId: String,
     val category: String,
     val description: String,
-    val input: TestInput,
+    val audioFile: String,
+    val utterance: String,
+    val preconditions: List<PreconditionStep> = emptyList(),
     val expected: TestExpectations
 )
 
-data class TestInput(
-    val utterance: String,
-    val elapsedMs: Int = 3000,
-    val preconditions: Map<String, Any> = emptyMap()
+data class PreconditionStep(
+    val action: String? = null,
+    val input: Map<String, Any> = emptyMap(),
+    val wait: Long? = null
 )
 
 data class TestExpectations(
@@ -26,6 +28,9 @@ data class TestExpectations(
     val serviceStateChanges: Map<String, Any>? = null,
     val sideEffects: Map<String, Any>? = null,
     val ttsSpoken: String? = null,
+    val finalTranscript: String? = null,
+    val shouldWaitForMoreSpeech: Boolean? = null,
+    val vadTimeout: Int? = null,
 
     // Negative assertions (what should NOT happen)
     val shouldNotExecute: List<String>? = null,
@@ -51,22 +56,23 @@ data class TestResult(
 
 // Extension function to convert scenario to JSON
 fun RegressionTestScenario.toJson(): JSONObject = JSONObject().apply {
-    put("test_id", testId)
+    put("testId", testId)
     put("category", category)
     put("description", description)
-    put("input", JSONObject().apply {
-        put("utterance", input.utterance)
-        put("elapsed_ms", input.elapsedMs)
-        if (input.preconditions.isNotEmpty()) {
-            put("preconditions", JSONObject(input.preconditions))
+    put("audioFile", audioFile)
+    put("utterance", utterance)
+    if (preconditions.isNotEmpty()) put("preconditions", org.json.JSONArray(preconditions.map { step ->
+        JSONObject().apply {
+            step.action?.let { put("action", it) }
+            if (step.input.isNotEmpty()) put("input", JSONObject(step.input))
+            step.wait?.let { put("wait", it) }
         }
-    })
+    }))
     put("expected", JSONObject().apply {
-        // Positive assertions
-        expected.workflowMatched?.let { put("workflow_matched", it) }
-        expected.workflowExecuted?.let { put("workflow_executed", it) }
-        expected.workflowSuccess?.let { put("workflow_success", it) }
-        expected.actionsExecuted?.let { put("actions_executed", it) }
+        expected.workflowMatched?.let { put("workflowMatched", it) }
+        expected.workflowExecuted?.let { put("workflowExecuted", it) }
+        expected.workflowSuccess?.let { put("workflowSuccess", it) }
+        expected.actionsExecuted?.let { put("actionsExecuted", it) }
         expected.databaseChanges?.let { dbChanges ->
             val dbJson = JSONObject()
             dbChanges.forEach { (key, value) ->
@@ -78,15 +84,13 @@ fun RegressionTestScenario.toJson(): JSONObject = JSONObject().apply {
                 value.hasField?.let { assertionJson.put("hasField", JSONObject(it)) }
                 dbJson.put(key, assertionJson)
             }
-            put("database_changes", dbJson)
+            put("databaseChanges", dbJson)
         }
-        expected.serviceStateChanges?.let { put("service_state_changes", JSONObject(it)) }
-        expected.sideEffects?.let { put("side_effects", JSONObject(it)) }
-        expected.ttsSpoken?.let { put("tts_spoken", it) }
-
-        // Negative assertions
-        expected.shouldNotExecute?.let { put("should_not_execute", it) }
-        expected.shouldNotCreate?.let { put("should_not_create", it) }
-        expected.shouldNotModify?.let { put("should_not_modify", it) }
+        expected.serviceStateChanges?.let { put("serviceStateChanges", JSONObject(it)) }
+        expected.sideEffects?.let { put("sideEffects", JSONObject(it)) }
+        expected.ttsSpoken?.let { put("ttsSpoken", it) }
+        expected.shouldNotExecute?.let { put("shouldNotExecute", it) }
+        expected.shouldNotCreate?.let { put("shouldNotCreate", it) }
+        expected.shouldNotModify?.let { put("shouldNotModify", it) }
     })
 }

@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Audio Recorder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .test-card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .test-id {
+            font-weight: 600;
+            color: #2563eb;
+            font-size: 14px;
+        }
+        .test-description {
+            color: #666;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+        .test-utterance {
+            background: #f9fafb;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #059669;
+        }
+        .test-category {
+            display: inline-block;
+            background: #e0e7ff;
+            color: #3730a3;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        button.recording {
+            background: #dc2626;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        button.success {
+            background: #059669;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .status {
+            display: inline-block;
+            margin-left: 12px;
+            font-size: 13px;
+            color: #666;
+        }
+        .status.recording {
+            color: #dc2626;
+            font-weight: 600;
+        }
+        .status.success {
+            color: #059669;
+            font-weight: 600;
+        }
+        .transcript-info {
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-size: 12px;
+            display: none;
+        }
+        .transcript-info.show {
+            display: block;
+        }
+        .filter-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            background: white;
+            color: #666;
+            border: 2px solid #e5e7eb;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .filter-btn.active {
+            background: #2563eb;
+            color: white;
+            border-color: #2563eb;
+        }
+        .pull-command {
+            background: #1f2937;
+            color: #10b981;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 8px;
+            display: none;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .pull-command.show {
+            display: block;
+        }
+        .action-buttons {
+            margin-top: 12px;
+            display: none;
+        }
+        .action-buttons.show {
+            display: flex;
+            gap: 8px;
+        }
+        .save-btn {
+            background: #059669;
+            font-size: 13px;
+            padding: 6px 12px;
+        }
+        .download-btn {
+            background: #7c3aed;
+            font-size: 13px;
+            padding: 6px 12px;
+        }
+        .global-download {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #7c3aed;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+            cursor: pointer;
+            z-index: 1000;
+        }
+        .global-download.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 Test Audio Recorder</h1>
+    <p>Click "Record" next to any test to record audio. The audio will be saved with the test ID as filename.</p>
+
+    <div class="filter-bar" id="filterBar"></div>
+
+    <div id="testList"></div>
+
+    <a href="/api/test/download-scenarios" download="test_scenarios.json" class="global-download" id="globalDownload">
+        📥 Download Updated JSON
+    </a>
+
+    <script>
+        let scenarios = [];
+        let currentRecording = null;
+        let statusCheckInterval = null;
+
+        async function loadScenarios() {
+            try {
+                const response = await fetch('/api/regression/scenarios');
+                const data = await response.json();
+                scenarios = data.scenarios;
+                renderFilters();
+                renderTests('all');
+            } catch (error) {
+                console.error('Failed to load scenarios:', error);
+                document.getElementById('testList').innerHTML = '<p style="color: red;">Failed to load test scenarios</p>';
+            }
+        }
+
+        function renderFilters() {
+            const categories = ['all', ...new Set(scenarios.map(s => s.category))];
+            const filterBar = document.getElementById('filterBar');
+            filterBar.innerHTML = categories.map(cat =>
+                `<button class="filter-btn ${cat === 'all' ? 'active' : ''}" onclick="filterByCategory('${cat}')">${cat}</button>`
+            ).join('');
+        }
+
+        function filterByCategory(category) {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent === category) btn.classList.add('active');
+            });
+            renderTests(category);
+        }
+
+        function renderTests(category) {
+            const filtered = category === 'all'
+                ? scenarios
+                : scenarios.filter(s => s.category === category);
+
+            const testList = document.getElementById('testList');
+            testList.innerHTML = filtered.map(scenario => `
+                <div class="test-card" data-test-id="${scenario.test_id}">
+                    <div class="test-header">
+                        <div>
+                            <span class="test-category">${scenario.category}</span>
+                            <span class="test-id">${scenario.test_id}</span>
+                        </div>
+                        <div>
+                            <button id="btn-${scenario.test_id}" onclick="toggleRecording('${scenario.test_id}')">
+                                Record
+                            </button>
+                            <span class="status" id="status-${scenario.test_id}"></span>
+                        </div>
+                    </div>
+                    <div class="test-description">${scenario.description}</div>
+                    <div class="test-utterance">"${scenario.input.utterance}"</div>
+                    <div class="transcript-info" id="transcript-${scenario.test_id}"></div>
+                    <div class="action-buttons" id="actions-${scenario.test_id}">
+                        <button class="save-btn" onclick="saveRecordingToTest('${scenario.test_id}')">💾 Save to Test</button>
+                        <button class="download-btn" onclick="downloadAudio('${scenario.test_id}')">📥 Download Audio</button>
+                    </div>
+                    <div class="pull-command" id="pull-${scenario.test_id}"></div>
+                </div>
+            `).join('');
+        }
+
+        async function toggleRecording(testId) {
+            const btn = document.getElementById(`btn-${testId}`);
+            const status = document.getElementById(`status-${testId}`);
+
+            if (currentRecording === testId) {
+                // Stop recording
+                try {
+                    const response = await fetch('/api/test/record/stop', { method: 'POST' });
+                    const data = await response.json();
+
+                    if (data.success) {
+                        // Wait a bit for processing, then check final status
+                        setTimeout(() => checkFinalStatus(testId), 1000);
+                    }
+                } catch (error) {
+                    console.error('Stop failed:', error);
+                    status.textContent = 'Stop failed';
+                    status.className = 'status';
+                }
+            } else {
+                // Start recording
+                if (currentRecording) {
+                    alert('Already recording another test. Stop it first.');
+                    return;
+                }
+
+                const scenario = scenarios.find(s => s.test_id === testId);
+                try {
+                    const response = await fetch('/api/test/record/start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            testId: testId,
+                            expectedUtterance: scenario.input.utterance
+                        })
+                    });
+                    const data = await response.json();
+
+                    if (data.success) {
+                        currentRecording = testId;
+                        btn.textContent = 'Stop';
+                        btn.className = 'recording';
+                        status.textContent = 'Recording... Speak now!';
+                        status.className = 'status recording';
+
+                        // Start polling status
+                        statusCheckInterval = setInterval(() => checkRecordingStatus(testId), 500);
+                    } else {
+                        status.textContent = data.error;
+                    }
+                } catch (error) {
+                    console.error('Record start failed:', error);
+                    status.textContent = 'Failed to start';
+                }
+            }
+        }
+
+        async function checkRecordingStatus(testId) {
+            try {
+                const response = await fetch('/api/test/record/status');
+                const data = await response.json();
+
+                if (data.completed) {
+                    clearInterval(statusCheckInterval);
+                    checkFinalStatus(testId);
+                } else if (data.partial_transcripts && data.partial_transcripts.length > 0) {
+                    const latest = data.partial_transcripts[data.partial_transcripts.length - 1];
+                    const status = document.getElementById(`status-${testId}`);
+                    status.textContent = `Recording... "${latest}"`;
+                }
+            } catch (error) {
+                console.error('Status check failed:', error);
+            }
+        }
+
+        async function checkFinalStatus(testId) {
+            try {
+                const response = await fetch('/api/test/record/status');
+                const data = await response.json();
+
+                const btn = document.getElementById(`btn-${testId}`);
+                const status = document.getElementById(`status-${testId}`);
+                const transcriptInfo = document.getElementById(`transcript-${testId}`);
+                const pullCommand = document.getElementById(`pull-${testId}`);
+
+                btn.textContent = 'Record';
+                btn.className = '';
+                currentRecording = null;
+
+                if (data.final_transcript) {
+                    status.textContent = '✓ Recorded';
+                    status.className = 'status success';
+
+                    const scenario = scenarios.find(s => s.test_id === testId);
+                    const expected = scenario.input.utterance;
+                    const actual = data.final_transcript;
+
+                    transcriptInfo.innerHTML = `
+                        <strong>Expected:</strong> "${expected}"<br>
+                        <strong>Actual:</strong> "${actual}"<br>
+                        ${expected === actual ? '<strong style="color: #059669;">✓ Match!</strong>' : '<strong style="color: #dc2626;">⚠ Mismatch</strong>'}
+                    `;
+                    transcriptInfo.className = 'transcript-info show';
+
+                    const actionButtons = document.getElementById(`actions-${testId}`);
+                    actionButtons.className = 'action-buttons show';
+
+                    pullCommand.textContent = `adb pull ${data.audio_file_path} app/src/main/assets/test_audio/${testId}.wav`;
+                    pullCommand.className = 'pull-command show';
+                } else if (data.error) {
+                    status.textContent = `Error: ${data.error}`;
+                    status.className = 'status';
+                } else {
+                    status.textContent = 'No transcript received';
+                    status.className = 'status';
+                }
+            } catch (error) {
+                console.error('Final status check failed:', error);
+            }
+        }
+
+        async function saveRecordingToTest(testId) {
+            try {
+                const response = await fetch(`/api/test/save-recording/${testId}`, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`✅ Saved!\n\nAudio path added to test JSON.\n\nNext steps:\n1. Download audio: ${data.downloadAudioCommand}\n2. Download JSON using the button at bottom right\n3. Copy both to your project\n4. Rebuild app`);
+
+                    // Show global download button
+                    document.getElementById('globalDownload').className = 'global-download show';
+                } else {
+                    alert(`❌ Failed: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Save failed:', error);
+                alert('Failed to save recording to test');
+            }
+        }
+
+        function downloadAudio(testId) {
+            window.location.href = `/api/test/download-recording/${testId}`;
+        }
+
+        // Load scenarios on page load
+        loadScenarios();
+    </script>
+</body>
+</html>

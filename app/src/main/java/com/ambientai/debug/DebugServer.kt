@@ -30,7 +30,8 @@ class DebugServer @Inject constructor(
     private val segmentRepo: com.ambientai.data.repositories.ITranscriptSegmentRepository,
     private val regressionTestExecutor: com.ambientai.testing.RegressionTestExecutor,
     private val regressionTestScenarios: com.ambientai.testing.RegressionTestScenarios,
-    private val actionExecRepo: com.ambientai.data.repositories.IActionExecutionRepository
+    private val actionExecRepo: com.ambientai.data.repositories.IActionExecutionRepository,
+    private val testRecordingManager: com.ambientai.testing.TestRecordingManager
 ) : NanoHTTPD(8080) {
 
     companion object {
@@ -68,6 +69,7 @@ class DebugServer @Inject constructor(
             when {
                 uri == "/" -> handleRoot()
                 uri == "/lyrics" -> handleLyricsSearchPage()
+                uri == "/recorder" -> handleTestRecorderPage()
                 uri == "/api/status" -> handleStatus()
                 uri == "/api/ping" -> jsonResponse(JSONObject().apply { put("status", "pong") })
                 uri == "/api/workflows" -> handleWorkflows()
@@ -107,6 +109,12 @@ class DebugServer @Inject constructor(
                 uri.startsWith("/api/regression/run/") && method == Method.POST -> handleRunSpecificTest(uri)
                 uri == "/api/regression/scenarios" -> handleGetRegressionScenarios()
                 uri == "/api/debug/actions" -> handleGetRecentActions()
+                uri == "/api/test/record/start" && method == Method.POST -> handleRecordStart(session)
+                uri == "/api/test/record/stop" && method == Method.POST -> handleRecordStop()
+                uri == "/api/test/record/status" -> handleRecordStatus()
+                uri.startsWith("/api/test/download-recording/") -> handleDownloadRecording(uri)
+                uri.startsWith("/api/test/save-recording/") && method == Method.POST -> handleSaveRecordingToScenario(uri)
+                uri == "/api/test/download-scenarios" -> handleDownloadScenarios()
                 else -> notFoundResponse()
             }
         } catch (e: Exception) {
@@ -115,6 +123,7 @@ class DebugServer @Inject constructor(
     }
 
     private fun handleLyricsSearchPage() = runCatching { val html = context.assets.open("lyrics_search.html").bufferedReader().use { it.readText() }; newFixedLengthResponse(Response.Status.OK, "text/html", html) }.getOrElse { e -> Log.e(TAG, "Error loading lyrics search page", e); newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error loading page: ${e.message}") }
+    private fun handleTestRecorderPage() = runCatching { val html = context.assets.open("test_recorder.html").bufferedReader().use { it.readText() }; newFixedLengthResponse(Response.Status.OK, "text/html", html) }.getOrElse { e -> Log.e(TAG, "Error loading test recorder page", e); newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error loading page: ${e.message}") }
     private fun handleRoot() = newFixedLengthResponse(
         Response.Status.OK,
         "text/html",
@@ -125,6 +134,7 @@ class DebugServer @Inject constructor(
             <h1>🤖 AmbientAI Debug Server</h1>
             <h2>Available Endpoints:</h2>
             <ul>
+                <li><a href="/recorder">🎤 /recorder</a> - Test audio recorder UI</li>
                 <li><a href="/lyrics">🎵 /lyrics</a> - Interactive lyrics search UI</li>
                 <li><a href="/api/ping">/api/ping</a> - Test connection</li>
                 <li><a href="/api/status">/api/status</a> - Get service status</li>
@@ -143,6 +153,13 @@ class DebugServer @Inject constructor(
                 <li>POST /api/test/utterance_end - Test final transcript</li>
                 <li><a href="/api/config">/api/config</a> - Get current routing config</li>
                 <li>POST /api/config/set - Update routing config</li>
+            </ul>
+            <h2>Audio Test Recording:</h2>
+            <ul>
+                <li>POST /api/test/record/start - Start recording audio for a test (body: {"testId": "test_name"})</li>
+                <li>POST /api/test/record/stop - Stop current recording</li>
+                <li><a href="/api/test/record/status">/api/test/record/status</a> - Check recording status</li>
+                <li>GET /api/test/download-recording/{testId} - Download recorded audio file</li>
             </ul>
             <h2>Music Library & Enrichment:</h2>
             <ul>
@@ -360,8 +377,6 @@ curl -X POST http://localhost:8080/api/lyrics/search -d '{"query":"heartbreak","
         return jsonResponse(config)
     }
     private fun handleSetConfig(session: IHTTPSession): Response {
-        val body = getRequestBody(session)
-        val json = JSONObject(body)
         // Note: This updates runtime config, not persisted
         // Would need to add mutable vars to RoutingConfig for this to work
         return jsonResponse(JSONObject().apply {
@@ -426,5 +441,152 @@ Consider:
     private fun handleRunSpecificTest(uri: String): Response = runCatching { val testId = uri.substringAfterLast("/"); Log.d(TAG, "🧪 RUNNING SPECIFIC TEST: $testId"); val scenarios = regressionTestScenarios.getAllScenarios(); val scenario = scenarios.firstOrNull { it.testId == testId } ?: return@runCatching jsonResponse(JSONObject().apply { put("success", false); put("error", "Test not found: $testId") }); val result = kotlinx.coroutines.runBlocking { regressionTestExecutor.runTest(scenario) }; val resultJson = JSONObject().apply { put("test_id", result.testId); put("passed", result.passed); put("duration_ms", result.durationMs); put("failures", JSONArray(result.failures)); put("details", JSONObject(result.details)) }; jsonResponse(JSONObject().apply { put("success", true); put("result", resultJson); put("summary", if (result.passed) "PASSED" else "FAILED: ${result.failures.joinToString(", ")}") }) }.getOrElse { e -> Log.e(TAG, "handleRunSpecificTest error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
     private fun handleGetRegressionScenarios(): Response = runCatching { val scenarios = regressionTestScenarios.getAllScenarios(); val scenariosJson = JSONArray(); scenarios.forEach { scenario -> scenariosJson.put(scenario.toJson()) }; jsonResponse(JSONObject().apply { put("success", true); put("total_scenarios", scenarios.size); put("scenarios", scenariosJson) }) }.getOrElse { e -> Log.e(TAG, "handleGetRegressionScenarios error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
     private fun handleGetRecentActions(): Response = runCatching { val actions = actionExecRepo.getRecent(20); val actionsJson = JSONArray(); actions.forEach { action -> actionsJson.put(JSONObject().apply { put("id", action.id); put("action_name", action.actionName); put("success", action.success); put("output_json", action.outputJson); put("input_json", action.inputJson); put("error", action.errorMessage ?: ""); put("latency_ms", action.latencyMs) }) }; jsonResponse(JSONObject().apply { put("success", true); put("total", actions.size); put("actions", actionsJson) }) }.getOrElse { e -> Log.e(TAG, "handleGetRecentActions error", e); jsonResponse(JSONObject().apply { put("success", false); put("error", e.message ?: "Unknown error") }) }
+    private fun handleRecordStart(session: IHTTPSession): Response = runCatching {
+        val body = getRequestBody(session)
+        val json = JSONObject(body)
+        val testId = json.getString("testId")
+        val expectedUtterance = json.optString("expectedUtterance", "")
+        Log.d(TAG, "🎤 START RECORDING: testId=$testId")
+        val started = testRecordingManager.startRecording(testId)
+        if (started) {
+            jsonResponse(JSONObject().apply {
+                put("success", true)
+                put("testId", testId)
+                put("message", "Recording started. Speak now.")
+                put("expectedUtterance", expectedUtterance)
+            })
+        } else {
+            jsonResponse(JSONObject().apply {
+                put("success", false)
+                put("error", "Recording already in progress or failed to start")
+            })
+        }
+    }.getOrElse { e ->
+        Log.e(TAG, "handleRecordStart error", e)
+        jsonResponse(JSONObject().apply {
+            put("success", false)
+            put("error", e.message ?: "Unknown error")
+        })
+    }
+    private fun handleRecordStop(): Response = runCatching {
+        Log.d(TAG, "⏹ STOP RECORDING")
+        val session = testRecordingManager.stopRecording()
+        if (session != null) {
+            jsonResponse(JSONObject().apply {
+                put("success", true)
+                put("testId", session.testId)
+                put("message", "Recording stopped. Processing...")
+            })
+        } else {
+            jsonResponse(JSONObject().apply {
+                put("success", false)
+                put("error", "No active recording")
+            })
+        }
+    }.getOrElse { e ->
+        Log.e(TAG, "handleRecordStop error", e)
+        jsonResponse(JSONObject().apply {
+            put("success", false)
+            put("error", e.message ?: "Unknown error")
+        })
+    }
+    private fun handleRecordStatus(): Response = runCatching {
+        val session = testRecordingManager.getCurrentSession()
+        if (session == null) {
+            jsonResponse(JSONObject().apply {
+                put("recording", false)
+                put("message", "No recording session")
+            })
+        } else {
+            val elapsed = System.currentTimeMillis() - session.startTime
+            jsonResponse(JSONObject().apply {
+                put("recording", !session.completed)
+                put("testId", session.testId)
+                put("completed", session.completed)
+                put("elapsed_ms", elapsed)
+                put("partial_transcripts", JSONArray(session.partialTranscripts))
+                put("final_transcript", session.finalTranscript ?: "")
+                put("audio_file_path", session.audioFilePath ?: "")
+                put("error", session.error ?: "")
+            })
+        }
+    }.getOrElse { e ->
+        Log.e(TAG, "handleRecordStatus error", e)
+        jsonResponse(JSONObject().apply {
+            put("success", false)
+            put("error", e.message ?: "Unknown error")
+        })
+    }
+    private fun handleDownloadRecording(uri: String): Response = runCatching {
+        val testId = uri.substringAfterLast("/")
+        val file = testRecordingManager.getRecordingFile(testId)
+        if (file.exists()) {
+            Log.d(TAG, "📥 DOWNLOADING: ${file.absolutePath}")
+            val inputStream = file.inputStream()
+            newChunkedResponse(Response.Status.OK, "audio/wav", inputStream)
+        } else {
+            jsonResponse(JSONObject().apply {
+                put("success", false)
+                put("error", "Recording not found: $testId")
+            })
+        }
+    }.getOrElse { e ->
+        Log.e(TAG, "handleDownloadRecording error", e)
+        jsonResponse(JSONObject().apply {
+            put("success", false)
+            put("error", e.message ?: "Unknown error")
+        })
+    }
+    private fun handleSaveRecordingToScenario(uri: String): Response = runCatching {
+        val testId = uri.substringAfterLast("/")
+        val session = testRecordingManager.getCurrentSession()
+        if (session?.testId != testId || !session.completed) {
+            return@runCatching jsonResponse(JSONObject().apply {
+                put("success", false)
+                put("error", "No completed recording for test: $testId")
+            })
+        }
+        val audioPath = session.audioFilePath ?: return@runCatching jsonResponse(JSONObject().apply {
+            put("success", false)
+            put("error", "No audio file saved")
+        })
+        val relativeAudioPath = "test_audio/${testId}.wav"
+        val updated = regressionTestScenarios.updateTestScenarioAudio(testId, relativeAudioPath)
+        if (updated) {
+            jsonResponse(JSONObject().apply {
+                put("success", true)
+                put("testId", testId)
+                put("audioPath", audioPath)
+                put("relativeAudioPath", relativeAudioPath)
+                put("message", "Test scenario updated with audio reference")
+                put("downloadAudioCommand", "adb pull $audioPath app/src/main/assets/test_audio/${testId}.wav")
+                put("downloadJsonUrl", "/api/test/download-scenarios")
+            })
+        } else {
+            jsonResponse(JSONObject().apply {
+                put("success", false)
+                put("error", "Failed to update test scenario")
+            })
+        }
+    }.getOrElse { e ->
+        Log.e(TAG, "handleSaveRecordingToScenario error", e)
+        jsonResponse(JSONObject().apply {
+            put("success", false)
+            put("error", e.message ?: "Unknown error")
+        })
+    }
+    private fun handleDownloadScenarios(): Response = runCatching {
+        val json = regressionTestScenarios.getUpdatedScenariosJson()
+        val response = newFixedLengthResponse(Response.Status.OK, "application/json", json)
+        response.addHeader("Content-Disposition", "attachment; filename=\"test_scenarios.json\"")
+        Log.d(TAG, "📥 DOWNLOADING updated test_scenarios.json")
+        response
+    }.getOrElse { e ->
+        Log.e(TAG, "handleDownloadScenarios error", e)
+        jsonResponse(JSONObject().apply {
+            put("success", false)
+            put("error", e.message ?: "Unknown error")
+        })
+    }
 }
 

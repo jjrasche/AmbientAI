@@ -1,469 +1,213 @@
 package com.ambientai.testing
 
+import android.content.Context
+import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class RegressionTestScenarios @Inject constructor() {
+class RegressionTestScenarios @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+    companion object {
+        private const val TAG = "RegressionTestScenarios"
+        private const val SCENARIOS_FILE = "test_scenarios.json"
+        private const val WRITABLE_SCENARIOS_FILE = "test_scenarios_writable.json"
+    }
 
-    fun getAllScenarios() = listOf(
-        // Music workflows
-        playMusicInLibrary(),
-        playMusicNotFound(),
-        pauseMusicWhilePlaying(),
-        resumeMusicWhilePaused(),
-        nextTrack(),
-        previousTrack(),
-        nowPlaying(),
-        stopMusic(),
+    fun getAllScenarios() = loadScenariosFromJson()
 
-        // Task workflows
-        startTaskNew(),
-        completeTask(),
-        pauseTask(),
-        resumeTask(),
+    fun updateTestScenarioAudio(testId: String, audioFilePath: String): Boolean {
+        try {
+            val scenarios = getAllScenarios().toMutableList()
+            val scenarioIndex = scenarios.indexOfFirst { it.testId == testId }
+            if (scenarioIndex == -1) {
+                Log.e(TAG, "✖ Test scenario not found: $testId")
+                return false
+            }
+            val updatedScenario = scenarios[scenarioIndex].copy(audioFile = audioFilePath)
+            scenarios[scenarioIndex] = updatedScenario
+            saveScenarios(scenarios)
+            Log.d(TAG, "✓ Updated $testId with audio: $audioFilePath")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "✖ Failed to update scenario", e)
+            return false
+        }
+    }
 
-        // Time workflows
-        setTimerMinutes(),
-        setTimerSeconds(),
-        cancelTimer(),
-        getCurrentTime(),
+    fun getUpdatedScenariosJson(): String {
+        val writableFile = java.io.File(context.filesDir, WRITABLE_SCENARIOS_FILE)
+        return if (writableFile.exists()) {
+            writableFile.readText()
+        } else {
+            context.assets.open(SCENARIOS_FILE).bufferedReader().use { it.readText() }
+        }
+    }
 
-        // Logging workflows
-        logFoodEntry(),
-        logWorkout(),
+    private fun saveScenarios(scenarios: List<RegressionTestScenario>) {
+        val jsonArray = JSONArray()
+        scenarios.forEach { scenario ->
+            jsonArray.put(scenarioToJson(scenario))
+        }
+        val writableFile = java.io.File(context.filesDir, WRITABLE_SCENARIOS_FILE)
+        writableFile.writeText(jsonArray.toString(2))
+        Log.d(TAG, "✓ Saved ${scenarios.size} scenarios to writable file")
+    }
 
-        // Conversational workflows
-        generalQuestion()
-    )
+    private fun scenarioToJson(scenario: RegressionTestScenario): JSONObject = JSONObject().apply {
+        put("testId", scenario.testId)
+        put("category", scenario.category)
+        put("description", scenario.description)
+        put("audioFile", scenario.audioFile)
+        put("utterance", scenario.utterance)
+        if (scenario.preconditions.isNotEmpty()) {
+            put("preconditions", JSONArray(scenario.preconditions.map { step ->
+                JSONObject().apply {
+                    step.action?.let { put("action", it) }
+                    if (step.input.isNotEmpty()) put("input", JSONObject(step.input))
+                    step.wait?.let { put("wait", it) }
+                }
+            }))
+        }
+        put("expected", expectationsToJson(scenario.expected))
+    }
 
-    private fun playMusicInLibrary() = RegressionTestScenario(
-        testId = "play_music_in_library",
-        category = "music",
-        description = "User says 'play taylor swift' and song exists in library",
-        input = TestInput(
-            utterance = "play taylor swift",
-            elapsedMs = 3000
-        ),
-        expected = TestExpectations(
-            workflowMatched = "play_music",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("media.play"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(minCount = 1)
-                // Note: MediaHistory only created when song completes or is paused
-            )
-        )
-    )
+    private fun expectationsToJson(expected: TestExpectations): JSONObject = JSONObject().apply {
+        expected.workflowMatched?.let { put("workflowMatched", it) }
+        expected.workflowExecuted?.let { put("workflowExecuted", it) }
+        expected.workflowSuccess?.let { put("workflowSuccess", it) }
+        expected.actionsExecuted?.let { put("actionsExecuted", JSONArray(it)) }
+        expected.databaseChanges?.let { changes ->
+            val dbJson = JSONObject()
+            changes.forEach { (key, assertion) ->
+                dbJson.put(key, JSONObject().apply {
+                    assertion.count?.let { put("count", it) }
+                    assertion.minCount?.let { put("minCount", it) }
+                    assertion.statusEquals?.let { put("statusEquals", it) }
+                    assertion.nameContains?.let { put("nameContains", it) }
+                })
+            }
+            put("databaseChanges", dbJson)
+        }
+        expected.serviceStateChanges?.let { put("serviceStateChanges", JSONObject(it)) }
+        expected.ttsSpoken?.let { put("ttsSpoken", it) }
+        expected.finalTranscript?.let { put("finalTranscript", it) }
+        expected.shouldWaitForMoreSpeech?.let { put("shouldWaitForMoreSpeech", it) }
+        expected.vadTimeout?.let { put("vadTimeout", it) }
+        expected.shouldNotExecute?.let { put("shouldNotExecute", JSONArray(it)) }
+        expected.shouldNotCreate?.let { put("shouldNotCreate", JSONArray(it)) }
+    }
 
-    private fun playMusicNotFound() = RegressionTestScenario(
-        testId = "play_music_not_found",
-        category = "music",
-        description = "User says 'play obscure artist' that doesn't exist in library",
-        input = TestInput(
-            utterance = "play NONEXISTENT_ARTIST_12345_ZZZZZ",  // Guaranteed not in library
-            elapsedMs = 3000
-        ),
-        expected = TestExpectations(
-            workflowMatched = "play_music",
-            workflowExecuted = true,
-            workflowSuccess = false,  // Will fail because not in library
-            actionsExecuted = listOf("media.play"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(minCount = 1)
-            )
-        )
-    )
+    private fun loadScenariosFromJson(): List<RegressionTestScenario> {
+        return try {
+            val writableFile = java.io.File(context.filesDir, WRITABLE_SCENARIOS_FILE)
+            val json = if (writableFile.exists()) {
+                Log.d(TAG, "📝 Loading from writable file")
+                writableFile.readText()
+            } else {
+                Log.d(TAG, "📦 Loading from assets (read-only)")
+                context.assets.open(SCENARIOS_FILE).bufferedReader().use { it.readText() }
+            }
+            val scenariosArray = JSONArray(json)
+            val scenarios = mutableListOf<RegressionTestScenario>()
+            for (i in 0 until scenariosArray.length()) {
+                val scenarioJson = scenariosArray.getJSONObject(i)
+                scenarios.add(parseScenario(scenarioJson))
+            }
+            Log.d(TAG, "✓ Loaded ${scenarios.size} test scenarios from JSON")
+            scenarios
+        } catch (e: Exception) {
+            Log.e(TAG, "✖ Failed to load scenarios from JSON", e)
+            emptyList()
+        }
+    }
 
-    private fun startTaskNew() = RegressionTestScenario(
-        testId = "start_task_new",
-        category = "tasks",
-        description = "Start a new task, should auto-pause previous if exists",
-        input = TestInput(
-            utterance = "start task regression test task",
-            elapsedMs = 3500
-        ),
-        expected = TestExpectations(
-            workflowMatched = "start_task",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("llm.prompt", "task.start", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 3),
-                "Task" to DatabaseAssertion(
-                    count = 1,
-                    nameContains = "regression"
+    private fun parseScenario(json: JSONObject): RegressionTestScenario {
+        val preconditions = if (json.has("preconditions")) {
+            val precondArray = json.getJSONArray("preconditions")
+            List(precondArray.length()) { i ->
+                val stepJson = precondArray.getJSONObject(i)
+                val input = if (stepJson.has("input")) {
+                    val inputJson = stepJson.getJSONObject("input")
+                    inputJson.keys().asSequence().associateWith { inputJson.get(it) }
+                } else emptyMap()
+                PreconditionStep(
+                    action = if (stepJson.has("action")) stepJson.getString("action") else null,
+                    input = input,
+                    wait = if (stepJson.has("wait")) stepJson.getLong("wait") else null
                 )
-            )
+            }
+        } else emptyList()
+        return RegressionTestScenario(
+            testId = json.getString("testId"),
+            category = json.getString("category"),
+            description = json.getString("description"),
+            audioFile = json.getString("audioFile"),
+            utterance = json.getString("utterance"),
+            preconditions = preconditions,
+            expected = parseTestExpectations(json.getJSONObject("expected"))
         )
+    }
+
+    private fun parseTestExpectations(json: JSONObject): TestExpectations {
+        val actionsExecuted = if (json.has("actionsExecuted")) {
+            val array = json.getJSONArray("actionsExecuted")
+            List(array.length()) { array.getString(it) }
+        } else null
+        val shouldNotExecute = if (json.has("shouldNotExecute")) {
+            val array = json.getJSONArray("shouldNotExecute")
+            List(array.length()) { array.getString(it) }
+        } else null
+        val shouldNotCreate = if (json.has("shouldNotCreate")) {
+            val array = json.getJSONArray("shouldNotCreate")
+            List(array.length()) { array.getString(it) }
+        } else null
+        val databaseChanges = if (json.has("databaseChanges")) {
+            val dbJson = json.getJSONObject("databaseChanges")
+            val changes = mutableMapOf<String, DatabaseAssertion>()
+            dbJson.keys().forEach { key ->
+                changes[key] = parseDatabaseAssertion(dbJson.getJSONObject(key))
+            }
+            changes
+        } else null
+        val serviceStateChanges = if (json.has("serviceStateChanges")) {
+            val stateJson = json.getJSONObject("serviceStateChanges")
+            val changes = mutableMapOf<String, Any>()
+            stateJson.keys().forEach { key ->
+                changes[key] = stateJson.get(key)
+            }
+            changes
+        } else null
+        return TestExpectations(
+            workflowMatched = if (json.has("workflowMatched")) json.getString("workflowMatched") else null,
+            workflowExecuted = json.optBooleanOrNull("workflowExecuted"),
+            workflowSuccess = json.optBooleanOrNull("workflowSuccess"),
+            actionsExecuted = actionsExecuted,
+            databaseChanges = databaseChanges,
+            serviceStateChanges = serviceStateChanges,
+            ttsSpoken = if (json.has("ttsSpoken")) json.getString("ttsSpoken") else null,
+            finalTranscript = if (json.has("finalTranscript")) json.getString("finalTranscript") else null,
+            shouldWaitForMoreSpeech = json.optBooleanOrNull("shouldWaitForMoreSpeech"),
+            vadTimeout = json.optIntOrNull("vadTimeout"),
+            shouldNotExecute = shouldNotExecute,
+            shouldNotCreate = shouldNotCreate
+        )
+    }
+
+    private fun parseDatabaseAssertion(json: JSONObject) = DatabaseAssertion(
+        count = json.optIntOrNull("count"),
+        minCount = json.optIntOrNull("minCount"),
+        statusEquals = if (json.has("statusEquals")) json.getString("statusEquals") else null,
+        nameContains = if (json.has("nameContains")) json.getString("nameContains") else null
     )
 
-    private fun setTimerMinutes() = RegressionTestScenario(
-        testId = "set_timer_minutes",
-        category = "time",
-        description = "Set timer for duration in minutes",
-        input = TestInput(
-            utterance = "set timer for 5 minutes",
-            elapsedMs = 3000
-        ),
-        expected = TestExpectations(
-            workflowMatched = "set_timer",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("llm.prompt", "timer.set", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 3)
-            )
-        )
-    )
+    private fun JSONObject.optBooleanOrNull(key: String): Boolean? =
+        if (has(key)) getBoolean(key) else null
 
-    private fun pauseMusicWhilePlaying() = RegressionTestScenario(
-        testId = "pause_music_while_playing",
-        category = "music",
-        description = "Pause music when music is playing",
-        input = TestInput(
-            utterance = "pause",
-            elapsedMs = 1200,
-            preconditions = mapOf("music_playing" to "test_song.mp3")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "pause_music",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("media.pause", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            serviceStateChanges = mapOf("music_player_playing" to false),
-            shouldNotExecute = listOf("media.play", "media.next", "media.previous")
-        )
-    )
-
-    private fun logFoodEntry() = RegressionTestScenario(
-        testId = "log_food_entry",
-        category = "logging",
-        description = "Log a food entry with details",
-        input = TestInput(
-            utterance = "log this food I ate chicken and rice",
-            elapsedMs = 5000
-        ),
-        expected = TestExpectations(
-            workflowMatched = "log_entry",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("llm.prompt", "log.write", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 3)
-            )
-        )
-    )
-
-    // ===== MUSIC WORKFLOWS =====
-
-    private fun resumeMusicWhilePaused() = RegressionTestScenario(
-        testId = "resume_music_while_paused",
-        category = "music",
-        description = "Resume music when music is paused",
-        input = TestInput(
-            utterance = "resume",
-            elapsedMs = 1200,
-            preconditions = mapOf("music_playing" to "test_song.mp3")  // Will be paused by test setup
-        ),
-        expected = TestExpectations(
-            workflowMatched = "resume_music",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("media.resume", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            serviceStateChanges = mapOf("music_player_playing" to true),
-            shouldNotExecute = listOf("media.play", "media.pause")
-        )
-    )
-
-    private fun nextTrack() = RegressionTestScenario(
-        testId = "next_track",
-        category = "music",
-        description = "Skip to next track while music is playing",
-        input = TestInput(
-            utterance = "next",
-            elapsedMs = 1000,
-            preconditions = mapOf("music_playing" to "test_song.mp3")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "next_track",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("media.next"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 1)
-            ),
-            serviceStateChanges = mapOf("music_player_playing" to true),
-            shouldNotExecute = listOf("media.previous", "media.pause")
-        )
-    )
-
-    private fun previousTrack() = RegressionTestScenario(
-        testId = "previous_track",
-        category = "music",
-        description = "Skip to previous track while music is playing",
-        input = TestInput(
-            utterance = "previous",
-            elapsedMs = 1200,
-            preconditions = mapOf("music_playing" to "test_song.mp3")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "previous_track",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("media.previous"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 1)
-            ),
-            serviceStateChanges = mapOf("music_player_playing" to true),
-            shouldNotExecute = listOf("media.next", "media.pause")
-        )
-    )
-
-    private fun nowPlaying() = RegressionTestScenario(
-        testId = "now_playing",
-        category = "music",
-        description = "Query what song is currently playing",
-        input = TestInput(
-            utterance = "what's playing",
-            elapsedMs = 2000,
-            preconditions = mapOf("music_playing" to "test_song.mp3")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "now_playing",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("media.getNowPlaying", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            shouldNotExecute = listOf("media.play", "media.pause", "media.next")
-        )
-    )
-
-    private fun stopMusic() = RegressionTestScenario(
-        testId = "stop_music",
-        category = "music",
-        description = "Stop music playback completely",
-        input = TestInput(
-            utterance = "stop",
-            elapsedMs = 1000,
-            preconditions = mapOf("music_playing" to "test_song.mp3")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "stop_music",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("media.stop", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            serviceStateChanges = mapOf("music_player_playing" to false),
-            shouldNotExecute = listOf("media.play", "media.pause")
-        )
-    )
-
-    // ===== TASK WORKFLOWS =====
-
-    private fun completeTask() = RegressionTestScenario(
-        testId = "complete_task",
-        category = "tasks",
-        description = "Complete the currently active task",
-        input = TestInput(
-            utterance = "complete task",
-            elapsedMs = 2000,
-            preconditions = mapOf("active_task" to "Test active task")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "complete_task",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("task.complete", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2),
-                "Task" to DatabaseAssertion(statusEquals = "COMPLETED")
-            ),
-            shouldNotExecute = listOf("task.start", "task.pause")
-        )
-    )
-
-    private fun pauseTask() = RegressionTestScenario(
-        testId = "pause_task",
-        category = "tasks",
-        description = "Pause the currently active task",
-        input = TestInput(
-            utterance = "pause task",
-            elapsedMs = 2000,
-            preconditions = mapOf("active_task" to "Test active task")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "pause_task",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("task.pause", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2),
-                "Task" to DatabaseAssertion(statusEquals = "PAUSED")
-            ),
-            shouldNotExecute = listOf("task.start", "task.complete")
-        )
-    )
-
-    private fun resumeTask() = RegressionTestScenario(
-        testId = "resume_task",
-        category = "tasks",
-        description = "Resume a paused task",
-        input = TestInput(
-            utterance = "resume task",
-            elapsedMs = 2000,
-            preconditions = mapOf("paused_task" to "Test paused task")
-        ),
-        expected = TestExpectations(
-            workflowMatched = "resume_task",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("task.resume", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2),
-                "Task" to DatabaseAssertion(statusEquals = "ACTIVE")
-            ),
-            shouldNotExecute = listOf("task.start", "task.complete")
-        )
-    )
-
-    // ===== TIME WORKFLOWS =====
-
-    private fun setTimerSeconds() = RegressionTestScenario(
-        testId = "set_timer_seconds",
-        category = "time",
-        description = "Set timer with seconds specified",
-        input = TestInput(
-            utterance = "set timer for 30 seconds",
-            elapsedMs = 3000
-        ),
-        expected = TestExpectations(
-            workflowMatched = "set_timer",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("llm.prompt", "timer.set", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 3)
-            ),
-            serviceStateChanges = mapOf("timer_active" to true),
-            shouldNotExecute = listOf("timer.cancel")
-        )
-    )
-
-    private fun cancelTimer() = RegressionTestScenario(
-        testId = "cancel_timer",
-        category = "time",
-        description = "Cancel an active timer",
-        input = TestInput(
-            utterance = "cancel timer",
-            elapsedMs = 2000,
-            preconditions = mapOf("timer_running" to 300000L)  // 5 minutes
-        ),
-        expected = TestExpectations(
-            workflowMatched = "cancel_timer",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("timer.cancel", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            serviceStateChanges = mapOf("timer_active" to false),
-            shouldNotExecute = listOf("timer.set")
-        )
-    )
-
-    private fun getCurrentTime() = RegressionTestScenario(
-        testId = "get_current_time",
-        category = "time",
-        description = "Ask for the current time",
-        input = TestInput(
-            utterance = "what time is it",
-            elapsedMs = 2500
-        ),
-        expected = TestExpectations(
-            workflowMatched = "get_time",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("time.get", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            shouldNotExecute = listOf("timer.set", "timer.cancel")
-        )
-    )
-
-    // ===== LOGGING WORKFLOWS =====
-
-    private fun logWorkout() = RegressionTestScenario(
-        testId = "log_workout",
-        category = "logging",
-        description = "Log a workout session",
-        input = TestInput(
-            utterance = "log workout ran 5 miles",
-            elapsedMs = 4000
-        ),
-        expected = TestExpectations(
-            workflowMatched = "log_entry",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("llm.prompt", "log.write", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 3)
-            ),
-            shouldNotExecute = listOf("task.start", "timer.set")
-        )
-    )
-
-    // ===== CONVERSATIONAL WORKFLOWS =====
-
-    private fun generalQuestion() = RegressionTestScenario(
-        testId = "general_question",
-        category = "conversational",
-        description = "Ask a general question that doesn't match any specific workflow",
-        input = TestInput(
-            utterance = "what is the capital of france",
-            elapsedMs = 4000
-        ),
-        expected = TestExpectations(
-            workflowMatched = "conversational_default",
-            workflowExecuted = true,
-            workflowSuccess = true,
-            actionsExecuted = listOf("llm.prompt", "tts.speak"),
-            databaseChanges = mapOf(
-                "WorkflowExecution" to DatabaseAssertion(count = 1),
-                "ActionExecution" to DatabaseAssertion(count = 2)
-            ),
-            shouldNotExecute = listOf("media.play", "task.start", "timer.set")
-        )
-    )
-
+    private fun JSONObject.optIntOrNull(key: String): Int? =
+        if (has(key)) getInt(key) else null
 }

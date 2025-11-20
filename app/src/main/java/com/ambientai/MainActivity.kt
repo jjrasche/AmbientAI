@@ -65,6 +65,8 @@ class MainActivity : ComponentActivity() {
     }
     private val transcriptListener = object : VoiceListeningService.TranscriptUpdateListener {
         override fun onPartialTranscript(text: String) { currentTranscript = text }
+        override fun onWorkflowStarted(workflowName: String, transcript: String) { }
+        override fun onWorkflowCompleted(workflowName: String) { }
         override fun onTranscriptSaved(transcript: Transcript) { currentTranscript = ""; if (isQuickStartListening) { isQuickStartListening = false; quickStartWorkflow?.let { workflow -> voiceService?.executeWorkflowDirectly(workflow.id, transcript.id) }; quickStartWorkflow = null } }
     }
     private val requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->

@@ -1,0 +1,393 @@
+[
+  {
+    "testId": "play_music_in_library",
+    "category": "music",
+    "description": "User says 'play taylor swift' and song exists in library",
+    "audioFile": "test_audio/play_music_in_library.wav",
+    "utterance": "play taylor swift",
+    "expected": {
+      "workflowMatched": "play_music",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.play"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 1}
+      }
+    }
+  },
+  {
+    "testId": "play_music_youtube_fallback",
+    "category": "music",
+    "description": "User says 'play obscure artist' - YouTube fallback finds results",
+    "audioFile": "test_audio/play_music_not_found.wav",
+    "utterance": "play the Bengal Tigers",
+    "expected": {
+      "workflowMatched": "play_music",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.play"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 1}
+      }
+    }
+  },
+  {
+    "testId": "pause_music_while_playing",
+    "category": "music",
+    "description": "Pause music when music is playing",
+    "audioFile": "test_audio/pause_music_while_playing.wav",
+    "utterance": "pause",
+    "preconditions": [
+      {"action": "media.play", "input": {"query": "Taylor Swift"}},
+      {"wait": 1500}
+    ],
+    "expected": {
+      "workflowMatched": "pause_music",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.pause", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "serviceStateChanges": {"music_player_playing": false},
+      "shouldNotExecute": ["media.play", "media.next", "media.previous"]
+    }
+  },
+  {
+    "testId": "resume_music_while_paused",
+    "category": "music",
+    "description": "Resume music when music is paused",
+    "audioFile": "test_audio/resume_music_while_paused.wav",
+    "utterance": "resume",
+    "preconditions": [
+      {"action": "media.play", "input": {"query": "Taylor Swift"}},
+      {"wait": 1500},
+      {"action": "media.pause"},
+      {"wait": 300}
+    ],
+    "expected": {
+      "workflowMatched": "resume_music",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.resume", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "serviceStateChanges": {"music_player_playing": true},
+      "shouldNotExecute": ["media.play", "media.pause"]
+    }
+  },
+  {
+    "testId": "next_track",
+    "category": "music",
+    "description": "Skip to next track while music is playing",
+    "audioFile": "test_audio/next_track.wav",
+    "utterance": "next",
+    "preconditions": [
+      {"action": "media.play", "input": {"query": "Taylor Swift"}},
+      {"wait": 1500}
+    ],
+    "expected": {
+      "workflowMatched": "next_track",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.next"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 1}
+      },
+      "serviceStateChanges": {"music_player_playing": true},
+      "shouldNotExecute": ["media.previous", "media.pause"]
+    }
+  },
+  {
+    "testId": "previous_track",
+    "category": "music",
+    "description": "Skip to previous track while music is playing",
+    "audioFile": "test_audio/previous_track.wav",
+    "utterance": "previous",
+    "preconditions": [
+      {"action": "media.play", "input": {"query": "Taylor Swift"}},
+      {"wait": 1500}
+    ],
+    "expected": {
+      "workflowMatched": "previous_track",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.previous"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 1}
+      },
+      "serviceStateChanges": {"music_player_playing": true},
+      "shouldNotExecute": ["media.next", "media.pause"]
+    }
+  },
+  {
+    "testId": "now_playing",
+    "category": "music",
+    "description": "Query what song is currently playing",
+    "audioFile": "test_audio/now_playing.wav",
+    "utterance": "what's playing",
+    "preconditions": [
+      {"action": "media.play", "input": {"query": "Taylor Swift"}},
+      {"wait": 1500}
+    ],
+    "expected": {
+      "workflowMatched": "now_playing",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.getNowPlaying", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "shouldNotExecute": ["media.play", "media.pause", "media.next"]
+    }
+  },
+  {
+    "testId": "stop_music",
+    "category": "music",
+    "description": "Stop music playback completely",
+    "audioFile": "test_audio/stop_music.wav",
+    "utterance": "stop",
+    "preconditions": [
+      {"action": "media.play", "input": {"query": "Taylor Swift"}},
+      {"wait": 1500}
+    ],
+    "expected": {
+      "workflowMatched": "stop_music",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.stop", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "serviceStateChanges": {"music_player_playing": false},
+      "shouldNotExecute": ["media.play", "media.pause"]
+    }
+  },
+  {
+    "testId": "start_task_new",
+    "category": "tasks",
+    "description": "Start a new task, should auto-pause previous if exists",
+    "audioFile": "test_audio/start_task_new.wav",
+    "utterance": "start task regression testing",
+    "expected": {
+      "workflowMatched": "start_task",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "task.start", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 3},
+        "Task": {"count": 1, "nameContains": "regression"}
+      }
+    }
+  },
+  {
+    "testId": "complete_task",
+    "category": "tasks",
+    "description": "Complete the currently active task",
+    "audioFile": "test_audio/complete_task.wav",
+    "utterance": "complete task",
+    "preconditions": [
+      {"action": "task.start", "input": {"name": "Test active task"}}
+    ],
+    "expected": {
+      "workflowMatched": "complete_task",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["task.complete", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2},
+        "Task": {"statusEquals": "COMPLETED"}
+      },
+      "shouldNotExecute": ["task.start", "task.pause"]
+    }
+  },
+  {
+    "testId": "pause_task",
+    "category": "tasks",
+    "description": "Pause the currently active task",
+    "audioFile": "test_audio/pause_task.wav",
+    "utterance": "pause task",
+    "preconditions": [
+      {"action": "task.start", "input": {"name": "Test active task"}}
+    ],
+    "expected": {
+      "workflowMatched": "pause_task",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["task.pause", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2},
+        "Task": {"statusEquals": "PAUSED"}
+      },
+      "shouldNotExecute": ["task.start", "task.complete"]
+    }
+  },
+  {
+    "testId": "resume_task",
+    "category": "tasks",
+    "description": "Resume a paused task",
+    "audioFile": "test_audio/resume_task.wav",
+    "utterance": "resume task",
+    "preconditions": [
+      {"action": "task.start", "input": {"name": "Test paused task"}},
+      {"action": "task.pause"}
+    ],
+    "expected": {
+      "workflowMatched": "resume_task",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["task.resume", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2},
+        "Task": {"statusEquals": "ACTIVE"}
+      },
+      "shouldNotExecute": ["task.start", "task.complete"]
+    }
+  },
+  {
+    "testId": "set_timer_minutes",
+    "category": "time",
+    "description": "Set timer for duration in minutes",
+    "audioFile": "test_audio/set_timer_minutes.wav",
+    "utterance": "set timer for five minutes",
+    "expected": {
+      "workflowMatched": "set_timer",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "timer.set", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 3}
+      }
+    }
+  },
+  {
+    "testId": "cancel_timer",
+    "category": "time",
+    "description": "Cancel an active timer",
+    "audioFile": "test_audio/cancel_timer.wav",
+    "utterance": "cancel timer",
+    "preconditions": [
+      {"action": "timer.set", "input": {"minutes": 5}}
+    ],
+    "expected": {
+      "workflowMatched": "cancel_timer",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["timer.cancel", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "serviceStateChanges": {"timer_active": false},
+      "shouldNotExecute": ["timer.set"]
+    }
+  },
+  {
+    "testId": "get_current_time",
+    "category": "time",
+    "description": "Ask for the current time",
+    "audioFile": "test_audio/get_current_time.wav",
+    "utterance": "what time is it",
+    "expected": {
+      "workflowMatched": "get_time",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["time.get", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "shouldNotExecute": ["timer.set", "timer.cancel"]
+    }
+  },
+  {
+    "testId": "log_food_entry",
+    "category": "logging",
+    "description": "Log a food entry with details",
+    "audioFile": "test_audio/log_food_entry.wav",
+    "utterance": "I ate half a cup of chicken and a cup of rice. Log this.",
+    "expected": {
+      "workflowMatched": "log_entry",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "log.write", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 3}
+      }
+    }
+  },
+  {
+    "testId": "general_question",
+    "category": "conversational",
+    "description": "Ask a general question that doesn't match any specific workflow",
+    "audioFile": "test_audio/general_question.wav",
+    "utterance": "what is the capital of france",
+    "expected": {
+      "workflowMatched": "conversational_default",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "shouldNotExecute": ["media.play", "task.start", "timer.set"]
+    }
+  },
+  {
+    "testId": "vad_conversational_no_timeout",
+    "category": "vad",
+    "description": "Even conversational queries have NO VAD - user manually stops",
+    "audioFile": "test_audio/vad_conversational_no_timeout.wav",
+    "utterance": "tell me about the weather forecast for this week and what I should expect",
+    "expected": {
+      "workflowMatched": "conversational_default",
+      "workflowExecuted": true
+    }
+  },
+  {
+    "testId": "vad_fallback_8_second_timeout",
+    "category": "vad",
+    "description": "8-second fallback timeout triggers if user doesn't manually stop",
+    "audioFile": "test_audio/vad_fallback_8_second_timeout.wav",
+    "utterance": "tell me about the weather forecast for this week and what I should expect",
+    "expected": {
+      "workflowMatched": "conversational_default",
+      "workflowExecuted": true,
+      "vadTimeout": 8000,
+      "finalTranscript": "tell me about the weather forecast for this week and what I should expect"
+    }
+  },
+  {
+    "testId": "long_speech_conversational",
+    "category": "conversational",
+    "description": "Long continuous speech should transcribe correctly",
+    "audioFile": "test_audio/long_speech_test.wav",
+    "utterance": "When I was a young boy, my father took me into the city to see the marching band. He said, son, when you grow up, will you be savior of the broken, the beaten, and the damned? He said, will you defeat them? Your demons, and all of the non believers. To join the black Parade.",
+    "expected": {
+      "workflowMatched": "conversational_default",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      }
+    }
+  }
+]

@@ -5,18 +5,19 @@ import android.util.Log
 import com.ambientai.core.media.MediaHandler
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.time.TimeManager
-import com.ambientai.data.entities.Media
 import com.ambientai.data.entities.Task
 import com.ambientai.data.entities.TaskStatus
 import com.ambientai.data.entities.WorkflowExecution
+import com.ambientai.core.stt.DeepgramSttService
 import com.ambientai.data.repositories.*
 import com.ambientai.debug.SttSimulator
 import com.ambientai.workflow.WorkflowRouter
 import com.ambientai.workflow.WorkflowExecutor
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
-import java.io.File
 import java.util.concurrent.TimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,15 +33,16 @@ class RegressionTestExecutor @Inject constructor(
     private val taskRepo: ITaskRepository,
     private val transcriptRepo: ITranscriptRepository,
     private val mediaHistoryRepo: IMediaHistoryRepository,
-    private val mediaRepo: IMediaRepository,
     private val mediaHandler: MediaHandler,
     private val taskManager: TaskManager,
-    private val timeManager: TimeManager
+    private val timeManager: TimeManager,
+    private val playbackStateManager: com.ambientai.core.music.PlaybackStateManager
 ) {
     companion object {
         private const val TAG = "RegressionTest"
         private const val DEFAULT_TIMEOUT_MS = 5000L
         private const val POLL_INTERVAL_MS = 100L
+        private const val STT_TIMEOUT_MS = 120000L
     }
 
     suspend fun runTest(scenario: RegressionTestScenario): TestResult {
@@ -53,30 +55,95 @@ class RegressionTestExecutor @Inject constructor(
             val initialState = captureState()
 
             // 2. Apply preconditions if any
-            if (scenario.input.preconditions.isNotEmpty()) {
-                applyPreconditions(scenario.input.preconditions)
+            if (scenario.preconditions.isNotEmpty()) {
+                applyPreconditions(scenario.preconditions)
             }
 
-            // 3. Save a transcript first (workflows expect transcriptId)
+            // 3. Load and transcribe audio file through Deepgram (real E2E STT)
+            val audioData = try {
+                context.assets.open(scenario.audioFile).use { it.readBytes() }
+            } catch (e: Exception) {
+                Log.e(TAG, "✖ Failed to load audio: ${scenario.audioFile}", e)
+                failures.add("Failed to load audio file: ${scenario.audioFile}")
+                return TestResult(
+                    testId = scenario.testId,
+                    passed = false,
+                    durationMs = System.currentTimeMillis() - testStartTime,
+                    failures = failures
+                )
+            }
+
+            Log.d(TAG, "🎤 Transcribing ${audioData.size} bytes from ${scenario.audioFile}")
+
+            // Use production DeepgramSttService with callbacks - DRY principle
+            val transcriptDeferred = CompletableDeferred<String?>()
+            val sttService = DeepgramSttService(
+                context = context,
+                onPartialTranscript = { /* ignore partials for test */ },
+                onTranscriptReady = { text -> transcriptDeferred.complete(text) },
+                onRecognitionError = { _ -> transcriptDeferred.complete(null) },
+                audioSaveCallback = { /* ignore audio save for test */ },
+                onRecordingStopped = { /* handled by onTranscriptReady */ }
+            )
+
+            if (!sttService.initialize()) {
+                failures.add("STT initialization failed - missing RECORD_AUDIO permission")
+                return TestResult(
+                    testId = scenario.testId,
+                    passed = false,
+                    durationMs = System.currentTimeMillis() - testStartTime,
+                    failures = failures
+                )
+            }
+
+            sttService.startFromAudioData(audioData)
+
+            val transcriptionText = try {
+                withTimeout(STT_TIMEOUT_MS) { transcriptDeferred.await() }
+            } catch (e: Exception) {
+                Log.e(TAG, "✖ STT timeout or error", e)
+                null
+            }
+
+            if (transcriptionText == null) {
+                failures.add("STT transcription failed - no result from Deepgram")
+                return TestResult(
+                    testId = scenario.testId,
+                    passed = false,
+                    durationMs = System.currentTimeMillis() - testStartTime,
+                    failures = failures
+                )
+            }
+
+            // Validate transcription matches expected utterance (strip punctuation, normalize whitespace)
+            fun normalize(s: String) = s.lowercase().replace(Regex("[^a-z0-9\\s]"), "").replace(Regex("\\s+"), " ").trim()
+            val expectedNormalized = normalize(scenario.utterance)
+            val actualNormalized = normalize(transcriptionText)
+            if (expectedNormalized != actualNormalized) {
+                failures.add("STT mismatch: expected \"${scenario.utterance}\" → \"$expectedNormalized\", got \"$transcriptionText\" → \"$actualNormalized\"")
+            }
+            Log.d(TAG, "📝 Transcription: \"$transcriptionText\" (expected: \"${scenario.utterance}\")")
+
+            // 4. Save a transcript first (workflows expect transcriptId)
             val transcript = com.ambientai.data.entities.Transcript(
-                text = scenario.input.utterance,
-                audioFilePath = "",  // No audio for regression tests
+                text = transcriptionText,
+                audioFilePath = scenario.audioFile,
                 timestamp = System.currentTimeMillis(),
                 excludeFromContext = true  // Don't pollute context with test transcripts
             )
             val savedTranscript = transcriptRepo.save(transcript)
 
-            // 4. Execute the test - route and execute workflow
-            val match = workflowRouter.route(scenario.input.utterance, savedTranscript.id, isPartial = false)
+            // 5. Execute the test - route and execute workflow
+            val match = workflowRouter.route(transcriptionText, savedTranscript.id, isPartial = false)
             if (match != null) {
                 Log.d(TAG, "  → Matched workflow: ${match.definition.name}")
                 Log.d(TAG, "  → Context variables: ${match.context.variables.keys}")
                 workflowExecutor.execute(match)
             } else {
-                Log.w(TAG, "  → No workflow matched for: ${scenario.input.utterance}")
+                Log.w(TAG, "  → No workflow matched for: $transcriptionText")
             }
 
-            // 5. Wait for workflow completion (polling instead of fixed delay)
+            // 6. Wait for workflow completion (polling instead of fixed delay)
             val execution = try {
                 waitForWorkflowCompletion(testStartTime, DEFAULT_TIMEOUT_MS)
             } catch (e: TimeoutException) {
@@ -84,16 +151,16 @@ class RegressionTestExecutor @Inject constructor(
                 null
             }
 
-            // 6. Capture final state
+            // 7. Capture final state
             val finalState = captureState()
 
-            // 7. Assert expectations
+            // 8. Assert expectations
             assertExpectations(scenario.expected, initialState, finalState, failures)
 
-            // 8. Assert service state changes (Level 2 verification)
+            // 9. Assert service state changes (Level 2 verification)
             assertServiceStateChanges(scenario.expected, failures)
 
-            // 9. Assert negative conditions
+            // 10. Assert negative conditions
             assertNegativeConditions(scenario.expected, initialState, finalState, failures)
 
             val durationMs = System.currentTimeMillis() - testStartTime
@@ -166,126 +233,39 @@ class RegressionTestExecutor @Inject constructor(
     )
 
     /**
-     * Apply preconditions using REAL production methods only.
-     * No test hooks, no special modes.
+     * Apply preconditions by executing action sequences defined in JSON.
+     * Truly data-driven - no hardcoded logic.
      */
-    private suspend fun applyPreconditions(preconditions: Map<String, Any>) {
-        Log.d(TAG, "📋 Applying preconditions: ${preconditions.keys}")
+    private suspend fun applyPreconditions(preconditions: List<PreconditionStep>) {
+        if (preconditions.isEmpty()) return
+        Log.d(TAG, "📋 Applying ${preconditions.size} precondition steps")
 
-        preconditions.forEach { (key, value) ->
-            when (key) {
-                // Database state - direct entity creation
-                "media_in_library" -> {
-                    val mediaList = value as List<Map<String, Any>>
-                    mediaList.forEach { mediaData ->
-                        // Copy test audio from assets to device
-                        val audioFile = copyAssetToCache(
-                            assetPath = "test_audio/${mediaData["filePath"]}",
-                            cacheDir = context.cacheDir
-                        )
-
-                        // Create Media entity with real file path
-                        mediaRepo.save(Media(
-                            title = mediaData["title"] as String,
-                            sourceType = "local",
-                            mediaType = "audio",
-                            sourceUrl = audioFile.absolutePath,
-                            duration = 0L,
-                            channelName = mediaData["artist"] as? String ?: "Unknown",
-                            localFilePath = audioFile.absolutePath
-                        ))
-                        Log.d(TAG, "  → Created media: ${mediaData["title"]}")
+        preconditions.forEach { step ->
+            when {
+                step.wait != null -> {
+                    Log.d(TAG, "  ⏳ wait ${step.wait}ms")
+                    delay(step.wait)
+                }
+                step.action != null -> {
+                    val input = JSONObject(step.input)
+                    Log.d(TAG, "  → ${step.action}: ${input.toString().take(50)}")
+                    val result = executeAction(step.action, input)
+                    if (!result.optBoolean("success", true)) {
+                        Log.w(TAG, "    ⚠ ${result.optString("error", "Action failed")}")
                     }
-                }
-
-                "active_task" -> {
-                    // Use REAL task creation action (no test hooks)
-                    taskManager.execute("task.start", JSONObject().apply {
-                        put("name", value as String)
-                    })
-                    Log.d(TAG, "  → Created active task: $value")
-                }
-
-                "paused_task" -> {
-                    // Create task using real action
-                    taskManager.execute("task.start", JSONObject().apply {
-                        put("name", value as String)
-                    })
-                    // Pause it using real action
-                    taskManager.execute("task.pause", JSONObject())
-                    Log.d(TAG, "  → Created paused task: $value")
-                }
-
-                // Service state - use REAL methods
-                "music_playing" -> {
-                    // Play first available song in library (any artist/song will work for precondition)
-                    // This uses the REAL media.play action which will search and play
-                    val result = mediaHandler.execute("media.play", JSONObject().apply {
-                        put("query", "a")  // Generic query that should match many songs
-                    })
-
-                    if (!result.getBoolean("success")) {
-                        Log.w(TAG, "  → Failed to play music: ${result.optString("error")}")
-                        Log.w(TAG, "  → Continuing test anyway (music playback not critical for routing)")
-                    }
-
-                    // Wait for playback to start (onPrepared callback + state update)
-                    delay(1500) // Give time for MediaPlayer to prepare and update PlaybackStateManager
-                    Log.d(TAG, "  → Music play precondition complete")
-                }
-
-                "timer_running" -> {
-                    // Use REAL timer action (no test hooks)
-                    val durationMs = value as Long
-                    timeManager.execute("timer.set", JSONObject().apply {
-                        put("minutes", durationMs / 60000)
-                    })
-                    Log.d(TAG, "  → Timer set for ${durationMs / 60000} minutes")
-                }
-
-                "music_paused" -> {
-                    // Copy test audio from assets
-                    val testFile = copyAssetToCache(
-                        assetPath = "test_audio/$value",
-                        cacheDir = context.cacheDir
-                    )
-
-                    // Use REAL playback method to start playing
-                    mediaHandler.execute("media.play", JSONObject().apply {
-                        put("filePath", testFile.absolutePath)
-                    })
-                    delay(500) // Give time for playback to start
-
-                    // Pause using real action handler
-                    mediaHandler.execute("media.pause", JSONObject())
-                    delay(200) // Give time for pause to take effect
-
-                    Log.d(TAG, "  → Music paused: $value")
-                }
-
-                else -> {
-                    Log.w(TAG, "  → Unknown precondition: $key")
                 }
             }
         }
     }
 
     /**
-     * Copy file from assets to cache directory for testing.
+     * Route action to appropriate handler based on namespace.
      */
-    private fun copyAssetToCache(assetPath: String, cacheDir: File): File {
-        val outputFile = File(cacheDir, assetPath.substringAfterLast("/"))
-
-        // Create parent directories if needed
-        outputFile.parentFile?.mkdirs()
-
-        context.assets.open(assetPath).use { input ->
-            outputFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        }
-
-        return outputFile
+    private suspend fun executeAction(action: String, input: JSONObject): JSONObject = when {
+        action.startsWith("media.") -> mediaHandler.execute(action, input)
+        action.startsWith("task.") -> taskManager.execute(action, input)
+        action.startsWith("timer.") -> timeManager.execute(action, input)
+        else -> JSONObject().apply { put("success", false); put("error", "Unknown action namespace: $action") }
     }
 
     /**

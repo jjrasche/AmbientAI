@@ -3,13 +3,15 @@ package com.ambientai.core.media
 import android.content.Context
 import android.media.MediaPlayer
 import android.util.Log
+import com.ambientai.core.music.PlaybackStateManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class MediaPlaybackService @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val playbackStateManager: PlaybackStateManager
 ) {
     companion object {
         private const val TAG = "MediaPlaybackService"
@@ -36,15 +38,18 @@ class MediaPlaybackService @Inject constructor(
             setOnPreparedListener {
                 start()
                 _isPlaying = true
-                Log.d(TAG, "✓ Playback started")
+                playbackStateManager.setPlaying(true)
+                Log.d(TAG, "✓ Playback started (playbackStateManager updated)")
             }
             setOnCompletionListener {
                 _isPlaying = false
+                playbackStateManager.setPlaying(false)
                 Log.d(TAG, "⏹ Playback completed")
             }
             setOnErrorListener { _, what, extra ->
                 Log.e(TAG, "❌ MediaPlayer error: what=$what, extra=$extra")
                 _isPlaying = false
+                playbackStateManager.setPlaying(false)
                 true
             }
         }
@@ -53,12 +58,14 @@ class MediaPlaybackService @Inject constructor(
     fun pause() {
         mediaPlayer?.pause()
         _isPlaying = false
+        playbackStateManager.setPlaying(false)
         Log.d(TAG, "⏸ PAUSED")
     }
 
     fun resume() {
         mediaPlayer?.start()
         _isPlaying = true
+        playbackStateManager.setPlaying(true)
         playbackStartTime = System.currentTimeMillis()
         Log.d(TAG, "▶ RESUMED")
     }
@@ -107,5 +114,6 @@ class MediaPlaybackService @Inject constructor(
         mediaPlayer = null
         currentItem = null
         _isPlaying = false
+        playbackStateManager.setPlaying(false)
     }
 }

@@ -33,6 +33,9 @@ import com.ambientai.data.repositories.IWorkflowDefinitionRepository
 import com.ambientai.data.repositories.IWorkflowExecutionRepository
 import com.ambientai.util.toHumanDuration
 import org.json.JSONObject
+import android.media.MediaPlayer
+import android.util.Log
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -65,7 +68,45 @@ fun DatabaseScreen(transcriptRepository: ITranscriptRepository, actionExecutionR
 @Composable
 fun TranscriptsTab(transcripts: List<Transcript>) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm:ss", Locale.getDefault()) }
-    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) { items(transcripts) { transcript -> Card(modifier = Modifier.fillMaxWidth()) { Column(modifier = Modifier.padding(12.dp)) { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(text = "ID: ${transcript.id}", style = MaterialTheme.typography.labelSmall); Text(text = dateFormat.format(Date(transcript.timestamp)), style = MaterialTheme.typography.labelSmall) }; Spacer(modifier = Modifier.height(4.dp)); Text(text = transcript.text, style = MaterialTheme.typography.bodyMedium); if (transcript.excludeFromContext) { Spacer(modifier = Modifier.height(4.dp)); Text(text = "EXCLUDED FROM CONTEXT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) } } } } }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var playingTranscriptId by remember { mutableStateOf<Long?>(null) }
+    DisposableEffect(Unit) { onDispose { mediaPlayer?.release() } }
+    fun playAudio(transcript: Transcript) {
+        mediaPlayer?.release()
+        if (transcript.audioFilePath.isBlank()) { Log.w("TranscriptsTab", "No audio file for transcript ${transcript.id}"); return }
+        val file = File(transcript.audioFilePath)
+        if (!file.exists()) { Log.w("TranscriptsTab", "Audio file not found: ${transcript.audioFilePath}"); return }
+        try {
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(transcript.audioFilePath)
+                prepare()
+                start()
+                setOnCompletionListener { playingTranscriptId = null }
+            }
+            playingTranscriptId = transcript.id
+            Log.d("TranscriptsTab", "Playing audio: ${transcript.audioFilePath}")
+        } catch (e: Exception) { Log.e("TranscriptsTab", "Error playing audio: ${e.message}") }
+    }
+    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(transcripts) { transcript ->
+            val isPlaying = playingTranscriptId == transcript.id
+            val hasAudio = transcript.audioFilePath.isNotBlank()
+            Card(modifier = Modifier.fillMaxWidth().clickable(enabled = hasAudio, indication = null, interactionSource = remember { MutableInteractionSource() }) { if (isPlaying) { mediaPlayer?.release(); playingTranscriptId = null } else playAudio(transcript) }, colors = CardDefaults.cardColors(containerColor = if (isPlaying) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(text = "ID: ${transcript.id}", style = MaterialTheme.typography.labelSmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (hasAudio) Text(text = if (isPlaying) "■ Stop" else "▶ Play", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text(text = dateFormat.format(Date(transcript.timestamp)), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = transcript.text, style = MaterialTheme.typography.bodyMedium)
+                    if (transcript.excludeFromContext) { Spacer(modifier = Modifier.height(4.dp)); Text(text = "EXCLUDED FROM CONTEXT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
+                }
+            }
+        }
+    }
 }
 @Composable
 fun LlmInteractionsTab(interactions: List<IActionExecutionRepository.LlmInteractionView>) {

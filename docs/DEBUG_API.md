@@ -237,6 +237,44 @@ If new test endpoints or workflows were added:
 
 ---
 
+## Audio File Management
+
+### Transferring Audio Files from Device
+
+Audio recordings are stored in the app's private storage. To pull binary files correctly:
+
+```bash
+# CORRECT: Use exec-out for binary files
+adb exec-out run-as com.ambientai cat files/audio_1732123456789.wav > output.wav
+
+# WRONG: shell cat corrupts binary files (especially on Windows)
+# adb shell run-as com.ambientai cat files/audio_1732123456789.wav > output.wav
+```
+
+### List Audio Files on Device
+
+```bash
+adb shell run-as com.ambientai ls -la files/ | grep audio
+```
+
+### Copy Audio to Project Test Assets
+
+```bash
+# Pull specific recording to test assets
+adb exec-out run-as com.ambientai cat files/audio_1732123456789.wav > app/src/main/assets/test_audio/my_test.wav
+```
+
+### Verify Audio on Device
+
+You can also verify audio directly on the device through the Database screen in the app:
+1. Open the app → Database tab → Transcripts
+2. Click on any transcript card with audio (shows "▶ Play" button)
+3. Audio will play on device speakers
+
+This helps verify that recordings are stored correctly before pulling them to the project.
+
+---
+
 ## Testing Anti-Patterns to Avoid
 
 ❌ **Don't**: "I've implemented the feature, please test it"

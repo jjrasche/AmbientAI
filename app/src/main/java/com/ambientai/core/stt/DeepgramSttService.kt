@@ -58,10 +58,49 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         startAudioCapture()
         startVadTimeout()
     }
+    /**
+     * Start transcription from audio file data instead of microphone.
+     * Uses exact same production code path - just different audio source.
+     */
+    fun startFromAudioData(audioData: ByteArray) {
+        if (isRecording) { Log.w(TAG, "⚠ STT START IGNORED (already recording)"); return }
+        recordingStartTime = System.currentTimeMillis()
+        // Skip WAV header (44 bytes) to get raw PCM data
+        val pcmData = if (audioData.size > 44) audioData.copyOfRange(44, audioData.size) else audioData
+        Log.d(TAG, "▶ DEEPGRAM STT STARTED (from audio data: ${pcmData.size} bytes)")
+        currentTranscript.clear()
+        lastPartialTranscript = ""
+        audioBuffer.clear()
+        lastSpeechTime = System.currentTimeMillis()
+        audioFilePath = null // No file to save for test audio
+        isRecording = true
+        startWebSocket()
+        startAudioFromData(pcmData)
+        // No VAD timeout for file playback - we control when it ends
+    }
+    private fun startAudioFromData(pcmData: ByteArray) {
+        recordingJob = CoroutineScope(Dispatchers.IO).launch {
+            val chunkSize = 3200 // 100ms of 16kHz 16-bit mono audio
+            var offset = 0
+            while (offset < pcmData.size && isRecording && isActive) {
+                val end = minOf(offset + chunkSize, pcmData.size)
+                val chunk = pcmData.copyOfRange(offset, end)
+                audioBuffer.add(chunk)
+                webSocket?.send(okio.ByteString.of(*chunk))
+                offset = end
+                delay(100) // Real-time streaming: 100ms chunk = 100ms delay
+            }
+            // Audio complete - wait for final results then stop
+            delay(1000)
+            stop()
+        }
+    }
     fun stop() {
         if (!isRecording) return
-        Log.d(TAG, "■ DEEPGRAM STT STOPPED (manual)")
+        val elapsed = System.currentTimeMillis() - recordingStartTime
         val text = currentTranscript.toString().trim()
+        Log.d(TAG, "■ DEEPGRAM STOPPED (manual) [${elapsed}ms]")
+        Log.d(TAG, "   ↳ Transcript buffer: \"$text\"")
         isRecording = false
         vadTimeoutJob?.cancel()
         recordingJob?.cancel()
@@ -72,50 +111,60 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         webSocket = null
         saveAudioFile()
         onRecordingStopped()
+        // Always call onTranscriptReady - let caller decide how to handle empty
         if (text.isNotEmpty()) {
-            Log.d(TAG, "✓ STT FINAL (manual stop): \"$text\"")
-            onTranscriptReady(text)
+            Log.d(TAG, "✓ SENDING FINAL to VoiceService: \"$text\"")
+        } else {
+            Log.d(TAG, "⚠ EMPTY TRANSCRIPT (no speech detected)")
         }
+        onTranscriptReady(text)
     }
     fun cleanup() = stop()
     private fun startWebSocket() {
         val apiKey = BuildConfig.DEEPGRAM_API_KEY
         if (apiKey.isBlank()) { Log.e(TAG, "✖ DEEPGRAM API KEY NOT SET"); onRecognitionError(ERROR_WEBSOCKET); return }
-        val request = Request.Builder().url("$DEEPGRAM_URL?model=nova-2-conversationalai&encoding=linear16&sample_rate=$SAMPLE_RATE&channels=1&interim_results=true&vad_events=true&endpointing=300").addHeader("Authorization", "Token $apiKey").build()
+        val request = Request.Builder().url("$DEEPGRAM_URL?model=nova-2-conversationalai&encoding=linear16&sample_rate=$SAMPLE_RATE&channels=1&interim_results=true&vad_events=true&smart_format=true").addHeader("Authorization", "Token $apiKey").build()
         webSocket = OkHttpClient().newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) { Log.d(TAG, "🔌 WebSocket CONNECTED") }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
+                    Log.d(TAG, "📥 RAW DEEPGRAM MSG: ${text.take(500)}")
                     when (json.optString("type")) {
                         "Results" -> {
                             val channel = json.optJSONObject("channel")
                             val alternatives = channel?.optJSONArray("alternatives")
                             val transcript = alternatives?.optJSONObject(0)?.optString("transcript") ?: ""
-                            val isFinal = channel?.optBoolean("is_final") ?: false
+                            val isFinal = json.optBoolean("is_final", false)
+                            val speechFinal = json.optBoolean("speech_final", false)
+                            val elapsed = System.currentTimeMillis() - recordingStartTime
+                            Log.d(TAG, "   ↳ is_final=$isFinal, speech_final=$speechFinal")
                             if (transcript.isNotBlank()) {
-                                val elapsed = System.currentTimeMillis() - recordingStartTime
                                 lastSpeechTime = System.currentTimeMillis()
+                                val fullText = currentTranscript.toString() + transcript
+                                val wordCount = fullText.split("\\s+".toRegex()).size
                                 if (isFinal) {
                                     currentTranscript.append(transcript).append(" ")
                                     lastPartialTranscript = ""
-                                    Log.d(TAG, "✓ FINAL CHUNK [${elapsed}ms]: \"$transcript\"")
+                                    Log.d(TAG, "✅ DEEPGRAM FINAL CHUNK [${elapsed}ms, $wordCount words total]: \"$transcript\"")
+                                    Log.d(TAG, "   ↳ Current full transcript: \"${currentTranscript.toString().trim()}\"")
                                 } else {
                                     lastPartialTranscript = transcript
-                                    Log.d(TAG, "   PARTIAL [${elapsed}ms]: \"$transcript\"")
-                                    onPartialTranscript(currentTranscript.toString() + transcript)
+                                    Log.d(TAG, "⏳ DEEPGRAM PARTIAL [${elapsed}ms, $wordCount words]: \"$transcript\"")
+                                    onPartialTranscript(fullText)
                                 }
+                            } else {
+                                Log.d(TAG, "⚠ DEEPGRAM EMPTY RESULT [${elapsed}ms, isFinal=$isFinal]")
                             }
                         }
                         "SpeechStarted" -> {
                             val elapsed = System.currentTimeMillis() - recordingStartTime
-                            Log.d(TAG, "🗣 SPEECH STARTED [${elapsed}ms]")
+                            Log.d(TAG, "🗣 DEEPGRAM SPEECH STARTED [${elapsed}ms]")
                             lastSpeechTime = System.currentTimeMillis()
                         }
                         "UtteranceEnd" -> {
                             val elapsed = System.currentTimeMillis() - recordingStartTime
-                            Log.d(TAG, "🔇 UTTERANCE END [${elapsed}ms] - triggering finalize")
-                            finalizeTranscript()
+                            Log.d(TAG, "🔇 DEEPGRAM UTTERANCE END [${elapsed}ms] (ignored - user controls stop)")
                         }
                     }
                 } catch (e: Exception) { Log.e(TAG, "✖ JSON PARSE ERROR: ${e.message}") }
@@ -158,14 +207,12 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         if (!isRecording) return
         val finalText = currentTranscript.toString().trim()
         val text = if (finalText.isEmpty()) lastPartialTranscript else finalText
+        Log.d(TAG, "🏁 FINALIZING TRANSCRIPT (VAD timeout)")
+        Log.d(TAG, "   ↳ currentTranscript buffer: \"$finalText\"")
+        Log.d(TAG, "   ↳ lastPartialTranscript: \"$lastPartialTranscript\"")
+        Log.d(TAG, "   ↳ Using: \"$text\"")
+        // stop() will call onTranscriptReady() - don't duplicate here
         stop()
-        if (text.isNotEmpty()) {
-            Log.d(TAG, "✓ STT FINAL RESULT: \"$text\"")
-            onTranscriptReady(text)
-        } else {
-            Log.d(TAG, "⚠ NO TRANSCRIPT - stopping recording")
-            onRecognitionError(ERROR_AUDIO_RECORD)
-        }
     }
     private fun saveAudioFile() {
         audioFilePath?.let { path ->

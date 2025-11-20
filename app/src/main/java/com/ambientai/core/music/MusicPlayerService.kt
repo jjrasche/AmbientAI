@@ -211,6 +211,7 @@ class MusicPlayerService : Service() {
     }
     private fun updateState() {
         val playing = isPlaying()
+        Log.d(TAG, "📊 updateState: playing=$playing, currentSong=${currentSong?.title}")
         _playbackState.value = PlaybackState(currentSong, mediaPlayer?.currentPosition?.toLong() ?: 0, playing)
         playbackStateManager.setPlaying(playing)
         playbackStateManager.setCurrentSong(currentSong)

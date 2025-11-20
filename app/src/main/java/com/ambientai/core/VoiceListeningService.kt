@@ -28,6 +28,7 @@ import com.ambientai.data.repositories.IGoldenDatasetRepository
 import com.ambientai.data.repositories.ITranscriptRepository
 import com.ambientai.workflow.MultipleMatchException
 import com.ambientai.workflow.WorkflowExecutor
+import com.ambientai.workflow.WorkflowMatch
 import com.ambientai.workflow.WorkflowResult
 import com.ambientai.workflow.WorkflowRouter
 import dagger.hilt.android.AndroidEntryPoint
@@ -69,6 +70,8 @@ class VoiceListeningService : Service() {
     }
     interface TranscriptUpdateListener {
         fun onPartialTranscript(text: String)
+        fun onWorkflowStarted(workflowName: String, transcript: String)
+        fun onWorkflowCompleted(workflowName: String)
         fun onTranscriptSaved(transcript: Transcript)
     }
     inner class LocalBinder : Binder() {
@@ -144,28 +147,14 @@ class VoiceListeningService : Service() {
     }
     private fun startListening() {
         recordingStartTime = System.currentTimeMillis()
-        Log.d(TAG, "🎤 MANUAL TRIGGER at ${recordingStartTime}")
+        Log.d(TAG, "🎤 RECORDING STARTED at ${recordingStartTime}")
         checkAndPauseMusic()
         if (isTtsSpeaking) { Log.d(TAG, "⏹ Interrupting TTS"); ttsService?.stop(); isTtsSpeaking = false }
         lastPartialTranscript = ""
         workflowTriggeredDuringRecording = false
         updateNotification("Listening...")
         audioFeedback?.playStartTone()
-        val isBluetoothConnected = isBluetoothAudioConnected()
-        Log.d(TAG, "🎧 Bluetooth audio: ${if (isBluetoothConnected) "CONNECTED" else "NOT CONNECTED"}")
-        serviceScope.launch {
-            // TODO: Optionally re-enable "yes" acknowledgment for clarity
-            // if (isBluetoothConnected) {
-            //     Log.d(TAG, "→ Bluetooth mode: TTS and STT in parallel")
-            //     launch { speak("yes") }
-            //     launch { deepgramStt?.start() }
-            // } else {
-            //     Log.d(TAG, "→ Phone mode: TTS then STT sequential")
-            //     speak("yes")
-            //     deepgramStt?.start()
-            // }
-            deepgramStt?.start()
-        }
+        serviceScope.launch { deepgramStt?.start() }
     }
     private fun isBluetoothAudioConnected(): Boolean {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
@@ -195,62 +184,51 @@ class VoiceListeningService : Service() {
         }
     }
     private fun handlePartialTranscript(text: String) {
-        val timestamp = System.currentTimeMillis()
-        val elapsed = if (recordingStartTime > 0) timestamp - recordingStartTime else 0
-        Log.d(TAG, "📝 PARTIAL [${elapsed}ms]: \"$text\" (${text.split("\\s+".toRegex()).size} words)")
+        val elapsed = System.currentTimeMillis() - recordingStartTime
+        val wordCount = text.split("\\s+".toRegex()).size
+        Log.d(TAG, "📝 PARTIAL [${elapsed}ms, $wordCount words]: \"$text\"")
         listeners.forEach { it.onPartialTranscript(text) }
-        if (!workflowTriggeredDuringRecording && text.length > lastPartialTranscript.length) {
-            lastPartialTranscript = text
-            checkPartialForWorkflowTriggers(text, elapsed)
+        if (!workflowTriggeredDuringRecording) {
+            checkPartialForWorkflowTrigger(text, elapsed, wordCount)
         }
     }
-    private fun checkPartialForWorkflowTriggers(partialText: String, elapsedMs: Long) = serviceScope.launch {
+    private fun checkPartialForWorkflowTrigger(partialText: String, elapsedMs: Long, wordCount: Int) = serviceScope.launch {
+        if (elapsedMs < 600) {
+            Log.d(TAG, "🔎 TOO EARLY: ${elapsedMs}ms, waiting for more audio")
+            return@launch
+        }
+        if (wordCount > 4) {
+            Log.d(TAG, "🔎 TOO LONG: $wordCount words, waiting for final transcript")
+            return@launch
+        }
         try {
-            Log.d(TAG, "🔎 CHECKING PARTIAL for workflow triggers (elapsed: ${elapsedMs}ms)")
-            val wordCount = partialText.split("\\s+".toRegex()).size
-            if (elapsedMs < com.ambientai.core.workflow.RoutingConfig.MIN_ELAPSED_BEFORE_ROUTING_MS) {
-                Log.d(TAG, "   ↳ TOO EARLY: ${elapsedMs}ms < ${com.ambientai.core.workflow.RoutingConfig.MIN_ELAPSED_BEFORE_ROUTING_MS}ms, ignoring")
-                return@launch
-            }
-            val incompletenessDetector = com.ambientai.core.workflow.IncompletenessDetector()
-            if (incompletenessDetector.detectCancellation(partialText)) {
-                Log.d(TAG, "   ↳ CANCELLATION DETECTED, stopping")
-                deepgramStt?.stop()
-                return@launch
-            }
             val match = workflowRouter.route(partialText, -1, isPartial = true)
-            if (incompletenessDetector.isIncomplete(partialText, wordCount, match?.definition)) {
-                Log.d(TAG, "   ↳ INCOMPLETE UTTERANCE, waiting for more")
-                return@launch
-            }
-            val tier = classifyCommandTier(wordCount, elapsedMs)
-            Log.d(TAG, "   ↳ Classified as tier: $tier")
             if (match != null && match.definition.name != "conversational_default") {
-                Log.d(TAG, "🎯 PARTIAL MATCH at ${elapsedMs}ms (tier: $tier): ${match.definition.name} from \"$partialText\"")
+                Log.d(TAG, "🎯 INSTANT TRIGGER [${elapsedMs}ms]: ${match.definition.name} from \"$partialText\"")
                 workflowTriggeredDuringRecording = true
                 deepgramStt?.stop()
-                val transcript = Transcript(text = partialText, timestamp = System.currentTimeMillis(), audioFilePath = currentAudioFilePath ?: "").also { transcriptRepository.save(it) }
-                Log.d(TAG, "💾 SAVED PARTIAL TRANSCRIPT: id=${transcript.id}, text=\"$partialText\"")
-                updateGoldenDatasetWithWorkflow(transcript.id, match.definition.name)
-                val matchWithTranscriptId = workflowRouter.route(partialText, transcript.id, isPartial = true)
-                when (matchWithTranscriptId?.let { workflowExecutor.execute(it) }) {
-                    is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${(matchWithTranscriptId?.let { workflowExecutor.execute(it) } as? WorkflowResult.Failure)?.error}") }
-                    else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
-                }
-                workflowTriggeredDuringRecording = false
-                lastPartialTranscript = ""
+                executeWorkflowFromPartial(match, partialText)
             } else {
-                Log.d(TAG, "   ↳ No workflow match or conversational_default, continuing to listen")
+                Log.d(TAG, "🔎 No instant match, waiting for final transcript")
             }
         } catch (e: Exception) {
-            Log.d(TAG, "⚠ No workflow match for partial: \"$partialText\" - ${e.message}")
+            Log.e(TAG, "✖ Partial routing error: ${e.message}")
         }
     }
-    private fun classifyCommandTier(wordCount: Int, elapsedMs: Long): com.ambientai.core.workflow.CommandTier = when {
-        wordCount <= com.ambientai.core.workflow.RoutingConfig.INSTANT_COMMAND_MAX_WORDS && elapsedMs < 2000 -> com.ambientai.core.workflow.CommandTier.INSTANT
-        wordCount <= com.ambientai.core.workflow.RoutingConfig.QUICK_COMMAND_MAX_WORDS && elapsedMs < 3500 -> com.ambientai.core.workflow.CommandTier.QUICK
-        wordCount <= com.ambientai.core.workflow.RoutingConfig.COMPLEX_COMMAND_MAX_WORDS && elapsedMs < 6000 -> com.ambientai.core.workflow.CommandTier.COMPLEX
-        else -> com.ambientai.core.workflow.CommandTier.CONVERSATIONAL
+    private suspend fun executeWorkflowFromPartial(match: WorkflowMatch, partialText: String) {
+        listeners.forEach { it.onWorkflowStarted(match.definition.name, partialText) }
+        val transcript = Transcript(text = partialText, timestamp = System.currentTimeMillis(), audioFilePath = currentAudioFilePath ?: "")
+        val savedTranscript = transcriptRepository.save(transcript)
+        Log.d(TAG, "💾 SAVED TRANSCRIPT: id=${savedTranscript.id}")
+        updateGoldenDatasetWithWorkflow(savedTranscript.id, match.definition.name)
+        val matchWithTranscriptId = workflowRouter.route(partialText, savedTranscript.id, isPartial = true)
+        val result = matchWithTranscriptId?.let { workflowExecutor.execute(it) }
+        when (result) {
+            is WorkflowResult.Failure -> Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}")
+            else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
+        }
+        listeners.forEach { it.onWorkflowCompleted(match.definition.name) }
+        listeners.forEach { it.onTranscriptSaved(savedTranscript) }
     }
     private fun handleAudioSaved(filePath: String) {
         Log.d(TAG, "💾 AUDIO SAVED CALLBACK: $filePath")
@@ -261,21 +239,28 @@ class VoiceListeningService : Service() {
         audioFeedback?.playStopTone()
     }
     private fun handleTranscript(text: String) {
-        val elapsed = if (recordingStartTime > 0) System.currentTimeMillis() - recordingStartTime else 0
-        Log.d(TAG, "📝 FINAL TRANSCRIPT [${elapsed}ms]: \"$text\" (${text.split("\\s+".toRegex()).size} words)")
-        val audioPath = currentAudioFilePath ?: ""
-        Transcript(text = text, audioFilePath = audioPath, timestamp = System.currentTimeMillis(), excludeFromContext = false).also { transcript ->
-            transcriptRepository.save(transcript)
-            listeners.forEach { listener -> listener.onTranscriptSaved(transcript) }
-            if (audioPath.isNotBlank()) {
-                GoldenDataset(audioFilePath = audioPath, transcript = text, timestamp = System.currentTimeMillis()).also {
-                    goldenDatasetRepository.save(it)
-                    Log.d(TAG, "📊 GOLDEN DATASET SAVED: id=${it.id}")
-                }
-            }
-            currentAudioFilePath = null
-            pendingQuickStartWorkflowId?.let { workflowId -> pendingQuickStartWorkflowId = null; executeWorkflowDirectly(workflowId, transcript.id) } ?: routeToWorkflow(text, transcript.id)
+        if (workflowTriggeredDuringRecording) {
+            Log.d(TAG, "📝 FINAL TRANSCRIPT (ignored, workflow already executed): \"$text\"")
+            workflowTriggeredDuringRecording = false
+            return
         }
+        val elapsed = System.currentTimeMillis() - recordingStartTime
+        val wordCount = text.split("\\s+".toRegex()).size
+        Log.d(TAG, "📝 FINAL TRANSCRIPT [${elapsed}ms, $wordCount words]: \"$text\"")
+        val audioPath = currentAudioFilePath ?: ""
+        val transcript = Transcript(text = text, audioFilePath = audioPath, timestamp = System.currentTimeMillis(), excludeFromContext = false)
+        transcriptRepository.save(transcript)
+        listeners.forEach { it.onTranscriptSaved(transcript) }
+        if (audioPath.isNotBlank()) {
+            val dataset = GoldenDataset(audioFilePath = audioPath, transcript = text, timestamp = System.currentTimeMillis())
+            goldenDatasetRepository.save(dataset)
+            Log.d(TAG, "📊 GOLDEN DATASET SAVED: id=${dataset.id}")
+        }
+        currentAudioFilePath = null
+        pendingQuickStartWorkflowId?.let { workflowId ->
+            pendingQuickStartWorkflowId = null
+            executeWorkflowDirectly(workflowId, transcript.id)
+        } ?: routeToWorkflow(text, transcript.id)
     }
     private suspend fun speak(text: String) {
         isTtsSpeaking = true
@@ -301,9 +286,11 @@ class VoiceListeningService : Service() {
                 speak("No workflow matched.")
             } else {
                 Log.d(TAG, "✓ MATCHED WORKFLOW: ${match.definition.name}")
+                listeners.forEach { it.onWorkflowStarted(match.definition.name, text) }
                 updateGoldenDatasetWithWorkflow(transcriptId, match.definition.name)
-                when (workflowExecutor.execute(match)) {
-                    is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${(workflowExecutor.execute(match) as? WorkflowResult.Failure)?.error}"); speak("Workflow failed: ${(workflowExecutor.execute(match) as? WorkflowResult.Failure)?.error}") }
+                val result = workflowExecutor.execute(match)
+                when (result) {
+                    is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); speak("Workflow failed: ${result.error}") }
                     null -> { Log.e(TAG, "✖ WORKFLOW ERROR: null result"); speak("System error.") }
                     else -> Log.d(TAG, "✓ WORKFLOW SUCCEEDED")
                 }
