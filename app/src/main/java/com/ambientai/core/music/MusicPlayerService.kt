@@ -269,18 +269,18 @@ class MusicPlayerService : Service() {
     private fun createNotification(): Notification {
         val song = currentSong ?: return NotificationCompat.Builder(this, CHANNEL_ID).build()
         val playPauseAction = if (isPlaying()) {
-            NotificationCompat.Action(android.R.drawable.ic_media_pause, "Pause", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PAUSE }, PendingIntent.FLAG_IMMUTABLE))
+            NotificationCompat.Action(android.R.drawable.ic_media_pause, "Pause", PendingIntent.getService(this, 2, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PAUSE }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         } else {
-            NotificationCompat.Action(android.R.drawable.ic_media_play, "Play", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PLAY }, PendingIntent.FLAG_IMMUTABLE))
+            NotificationCompat.Action(android.R.drawable.ic_media_play, "Play", PendingIntent.getService(this, 2, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PLAY }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(song.title)
             .setContentText("${song.artist} • ${song.album}")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setStyle(androidx.media.app.NotificationCompat.MediaStyle().setMediaSession(mediaSession.sessionToken).setShowActionsInCompactView(0, 1, 2))
-            .addAction(android.R.drawable.ic_media_previous, "Previous", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PREVIOUS }, PendingIntent.FLAG_IMMUTABLE))
+            .addAction(android.R.drawable.ic_media_previous, "Previous", PendingIntent.getService(this, 1, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_PREVIOUS }, PendingIntent.FLAG_IMMUTABLE))
             .addAction(playPauseAction)
-            .addAction(android.R.drawable.ic_media_next, "Next", PendingIntent.getService(this, 0, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_NEXT }, PendingIntent.FLAG_IMMUTABLE))
+            .addAction(android.R.drawable.ic_media_next, "Next", PendingIntent.getService(this, 3, Intent(this, MusicPlayerService::class.java).apply { action = ACTION_NEXT }, PendingIntent.FLAG_IMMUTABLE))
             .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
             .setOngoing(isPlaying())
             .setPriority(NotificationCompat.PRIORITY_LOW)

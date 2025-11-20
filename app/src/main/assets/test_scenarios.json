@@ -389,5 +389,74 @@
         "ActionExecution": {"count": 2}
       }
     }
+  },
+  {
+    "testId": "sequential_play_stop_start_task",
+    "category": "sequential",
+    "description": "Compound command: play music, then stop it, then start a task",
+    "audioFile": "test_audio/sequential_play_stop_start_task.wav",
+    "utterance": "play some country music no wait stop that start a coding task",
+    "expected": {
+      "workflowsMatched": ["play_music", "stop_music", "start_task"],
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 3},
+        "ActionExecution": {"minCount": 3},
+        "Task": {"count": 1, "nameContains": "coding"}
+      },
+      "serviceStateChanges": {"music_player_playing": false}
+    }
+  },
+  {
+    "testId": "cancel_timer_none_active",
+    "category": "edge_cases",
+    "description": "Cancel timer when no timer is active - should give friendly message",
+    "audioFile": "test_audio/cancel_timer_none_active.wav",
+    "utterance": "cancel timer",
+    "expected": {
+      "workflowMatched": "cancel_timer",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["timer.cancel", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      },
+      "ttsContains": "no timer"
+    }
+  },
+  {
+    "testId": "llm_response_what_do_you_think",
+    "category": "conversational",
+    "description": "User asks for LLM thoughts using trigger phrase",
+    "audioFile": "test_audio/llm_response_what_do_you_think.wav",
+    "utterance": "what do you think about test driven development",
+    "expected": {
+      "workflowMatched": "llm_response",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"count": 2}
+      }
+    }
+  },
+  {
+    "testId": "pause_task_none_active",
+    "category": "edge_cases",
+    "description": "Pause task when no task is active - graceful handling",
+    "audioFile": "test_audio/pause_task_none_active.wav",
+    "utterance": "pause task",
+    "expected": {
+      "workflowMatched": "pause_task",
+      "workflowExecuted": true,
+      "workflowSuccess": false,
+      "actionsExecuted": ["task.pause"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1}
+      }
+    }
   }
 ]
