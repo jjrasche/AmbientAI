@@ -273,8 +273,7 @@
       "enabled": true,
       "definition": {
         "triggers": {
-          "keywords": ["play some music", "play music", "play song", "listen to", "play artist", "play album", "shuffle", "put on some", "play a youtube video", "play youtube video", "play video about", "play a video about", "play youtube"],
-          "fallback": "play"
+          "keywords": ["play some music", "play music", "play song", "listen to", "play artist", "play album", "shuffle", "put on some", "play a youtube video", "play youtube video", "play video about", "play a video about", "play youtube"]
         },
         "requiresInput": true,
         "steps": [

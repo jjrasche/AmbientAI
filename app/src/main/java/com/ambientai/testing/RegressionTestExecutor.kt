@@ -59,13 +59,23 @@ class RegressionTestExecutor @Inject constructor(
         try {
             ttsService.testMode = skipTts
             Log.d(TAG, "🧪 Running ${scenarios.size} tests (skipTts=$skipTts)")
-            return scenarios.map { scenario -> runTest(scenario) }
+            return scenarios.map { scenario -> runTestInternal(scenario) }
         } finally {
             ttsService.testMode = originalTestMode
         }
     }
 
-    suspend fun runTest(scenario: RegressionTestScenario): TestResult {
+    suspend fun runTest(scenario: RegressionTestScenario, skipTts: Boolean = true): TestResult {
+        val originalTestMode = ttsService.testMode
+        return try {
+            ttsService.testMode = skipTts
+            runTestInternal(scenario)
+        } finally {
+            ttsService.testMode = originalTestMode
+        }
+    }
+
+    private suspend fun runTestInternal(scenario: RegressionTestScenario): TestResult {
         Log.d(TAG, "🧪 RUNNING TEST: ${scenario.testId}")
         val testStartTime = System.currentTimeMillis()
         val failures = mutableListOf<String>()
