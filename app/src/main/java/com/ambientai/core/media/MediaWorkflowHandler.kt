@@ -17,7 +17,12 @@ class MediaWorkflowHandler @Inject constructor(
     private val semanticSearch: MediaSemanticSearch
 ) {
     companion object { private const val TAG = "MediaWorkflowHandler" }
-    suspend fun execute(actionName: String, input: JSONObject) = when (actionName) { "media.searchAndSelect" -> searchAndSelect(input); "media.download" -> download(input); "media.searchLibrary" -> searchLibrary(input); else -> errorResult("Unknown action: $actionName") }
+    suspend fun execute(actionName: String, input: JSONObject) = when (actionName) {
+        "media.searchAndSelect" -> searchAndSelect(input)
+        "media.download" -> download(input)
+        "media.searchLibrary" -> searchLibrary(input)
+        else -> errorResult("Unknown action: $actionName")
+    }
     private fun successResult(data: Map<String, Any?> = emptyMap()) = JSONObject().apply { put("success", true); data.forEach { (k, v) -> put(k, v) } }
     private fun errorResult(message: String) = JSONObject().apply { put("success", false); put("error", message) }
     private suspend fun searchAndSelect(input: JSONObject): JSONObject = withContext(Dispatchers.IO) {

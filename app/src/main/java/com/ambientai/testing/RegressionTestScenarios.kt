@@ -139,7 +139,8 @@ class RegressionTestScenarios @Inject constructor(
                     action = if (stepJson.has("action")) stepJson.getString("action") else null,
                     input = input,
                     wait = if (stepJson.has("wait")) stepJson.getLong("wait") else null,
-                    clearActiveTasks = if (stepJson.has("clearActiveTasks")) stepJson.getBoolean("clearActiveTasks") else null
+                    clearActiveTasks = if (stepJson.has("clearActiveTasks")) stepJson.getBoolean("clearActiveTasks") else null,
+                    clearSubscriptions = if (stepJson.has("clearSubscriptions")) stepJson.getString("clearSubscriptions") else null
                 )
             }
         } else emptyList()

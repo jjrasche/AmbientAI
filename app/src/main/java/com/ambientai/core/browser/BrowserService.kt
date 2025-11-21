@@ -49,6 +49,7 @@ class BrowserService @Inject constructor(@ApplicationContext private val context
 
     private suspend fun navigate(url: String): JSONObject = suspendCancellableCoroutine { cont ->
         val sessionId = UUID.randomUUID().toString()
+        var resumed = false
         mainHandler.post {
             try {
                 val webView = WebView(context).apply {
@@ -66,10 +67,13 @@ class BrowserService @Inject constructor(@ApplicationContext private val context
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             Log.d(TAG, "✓ Page loaded: $url")
-                            sessions[sessionId] = BrowserSession(this@apply, mainHandler)
-                            cont.resume(JSONObject().apply { put("success", true); put("sessionId", sessionId); put("url", url) })
+                            if (!resumed) {
+                                resumed = true
+                                sessions[sessionId] = BrowserSession(this@apply, mainHandler)
+                                cont.resume(JSONObject().apply { put("success", true); put("sessionId", sessionId); put("url", url) })
+                            }
                         }
-                        override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) = error?.let { if (request?.isForMainFrame == true) cont.resumeWithException(Exception("Failed to load: ${it.description}")) } ?: Unit
+                        override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) = error?.let { if (request?.isForMainFrame == true && !resumed) { resumed = true; cont.resumeWithException(Exception("Failed to load: ${it.description}")) } } ?: Unit
                     }
                     loadUrl(url)
                 }
@@ -173,13 +177,15 @@ class BrowserService @Inject constructor(@ApplicationContext private val context
         session.handler.post { session.webView.evaluateJavascript(script) { result -> cont.resume(result?.trim('"') ?: "") } }
     }
 
-    private fun scheduleCleanup(): Unit = mainHandler.postDelayed({
-        val now = System.currentTimeMillis()
-        sessions.entries.filter { now - it.value.lastAccess > SESSION_TIMEOUT_MS }.forEach { (id, session) ->
-            Log.d(TAG, "⏰ Auto-closing expired session: $id")
-            sessions.remove(id)
-            mainHandler.post { session.webView.destroy() }
-        }
-        scheduleCleanup()
-    }, 60000).let { }
+    private fun scheduleCleanup() {
+        mainHandler.postDelayed({
+            val now = System.currentTimeMillis()
+            sessions.entries.filter { now - it.value.lastAccess > SESSION_TIMEOUT_MS }.forEach { (id, session) ->
+                Log.d(TAG, "⏰ Auto-closing expired session: $id")
+                sessions.remove(id)
+                mainHandler.post { session.webView.destroy() }
+            }
+            scheduleCleanup()
+        }, 60000)
+    }
 }

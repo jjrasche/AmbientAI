@@ -2,6 +2,7 @@ package com.ambientai.data.entities
 
 import io.objectbox.annotation.Entity
 import io.objectbox.annotation.Id
+import io.objectbox.annotation.Index
 
 @Entity
 data class Media(
@@ -15,6 +16,8 @@ data class Media(
     var channelName: String? = null,
     var publishDate: Long = 0,
     var localFilePath: String? = null,
-    var lastPlayedPosition: Long = 0,
+    var playbackPosition: Long = 0,
+    var completed: Boolean = false,
+    var downloadStatus: String? = null,
     var createdDate: Long = System.currentTimeMillis()
 )

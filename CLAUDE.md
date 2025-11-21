@@ -331,6 +331,12 @@ adb forward tcp:8080 tcp:8080
 curl -X POST http://localhost:8080/api/regression/run | jq
 ```
 
+**Run single E2E test (faster for debugging):**
+```bash
+curl -X POST http://localhost:8080/api/regression/run/get_current_time | jq
+curl -X POST http://localhost:8080/api/regression/run/play_music_in_library | jq
+```
+
 **Test voice routing:**
 ```bash
 curl -X POST http://localhost:8080/api/test/sequence \

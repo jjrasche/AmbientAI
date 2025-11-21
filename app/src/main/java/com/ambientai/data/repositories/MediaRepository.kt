@@ -24,9 +24,12 @@ class MediaRepository @Inject constructor(
     override fun getAll() = box.query().order(Media_.createdDate, OrderFlags.DESCENDING).build().find()
     override fun getBySourceType(sourceType: String) = box.query().equal(Media_.sourceType, sourceType, io.objectbox.query.QueryBuilder.StringOrder.CASE_INSENSITIVE).order(Media_.createdDate, OrderFlags.DESCENDING).build().find()
     override fun getByMediaType(mediaType: String) = box.query().equal(Media_.mediaType, mediaType, io.objectbox.query.QueryBuilder.StringOrder.CASE_INSENSITIVE).order(Media_.createdDate, OrderFlags.DESCENDING).build().find()
-    override fun updatePlaybackPosition(id: Long, positionMs: Long) { box.get(id)?.let { it.lastPlayedPosition = positionMs; box.put(it) } }
+    override fun updatePlaybackPosition(id: Long, positionMs: Long) { box.get(id)?.let { it.playbackPosition = positionMs; box.put(it) } }
     override fun getAllMedia(): Flow<List<Media>> = callbackFlow {
         val subscription = box.query().order(Media_.createdDate, OrderFlags.DESCENDING).build().subscribe().observer { trySend(it) }
         awaitClose { subscription.cancel() }
     }
+    override fun markCompleted(id: Long, completed: Boolean) { box.get(id)?.let { it.completed = completed; box.put(it) } }
+    override fun updateDownloadStatus(id: Long, status: String) { box.get(id)?.let { it.downloadStatus = status; box.put(it) } }
+    override fun updateLocalFilePath(id: Long, path: String) { box.get(id)?.let { it.localFilePath = path; box.put(it) } }
 }

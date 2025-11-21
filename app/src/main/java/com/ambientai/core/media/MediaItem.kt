@@ -58,7 +58,12 @@ data class MediaMetadata(
     val episodeNumber: Int? = null,
     val podcastName: String? = null,
     val thumbnailPath: String? = null,
-    val publishDate: Long? = null
+    val publishDate: Long? = null,
+    val subscriptionId: Long? = null,
+    val guid: String? = null,
+    val episodeDescription: String? = null,
+    val chapters: String? = null,
+    val feedUrl: String? = null
 ) {
     fun toJson() = JSONObject().apply {
         album?.let { put("album", it) }
@@ -68,6 +73,11 @@ data class MediaMetadata(
         podcastName?.let { put("podcastName", it) }
         thumbnailPath?.let { put("thumbnailPath", it) }
         publishDate?.let { put("publishDate", it) }
+        subscriptionId?.let { put("subscriptionId", it) }
+        guid?.let { put("guid", it) }
+        episodeDescription?.let { put("episodeDescription", it) }
+        chapters?.let { put("chapters", it) }
+        feedUrl?.let { put("feedUrl", it) }
     }
 
     companion object {
@@ -78,7 +88,12 @@ data class MediaMetadata(
             episodeNumber = json.optInt("episodeNumber", -1).takeIf { it >= 0 },
             podcastName = json.optString("podcastName", null),
             thumbnailPath = json.optString("thumbnailPath", null),
-            publishDate = json.optLong("publishDate", -1).takeIf { it >= 0 }
+            publishDate = json.optLong("publishDate", -1).takeIf { it >= 0 },
+            subscriptionId = json.optLong("subscriptionId", -1).takeIf { it >= 0 },
+            guid = json.optString("guid", null),
+            episodeDescription = json.optString("episodeDescription", null),
+            chapters = json.optString("chapters", null),
+            feedUrl = json.optString("feedUrl", null)
         )
     }
 }

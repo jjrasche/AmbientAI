@@ -34,7 +34,8 @@ class WorkflowExecutor @Inject constructor(
     private val workflowActions: WorkflowActionHandler,
     private val ui: UiService,
     private val mediaHandler: com.ambientai.core.media.MediaHandler,
-    private val browser: BrowserService
+    private val browser: BrowserService,
+    private val subscriptionHandler: com.ambientai.core.media.SubscriptionWorkflowHandler
 ) {
     companion object { private const val TAG = "WorkflowExecutor" }
     private var completionTriggers = mapOf<String, List<Long>>()
@@ -80,7 +81,7 @@ class WorkflowExecutor @Inject constructor(
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
             Log.d(TAG, "    → Input: $resolvedInput")
-            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "ui" -> if (actionName == "ui.awaitChoice") ui.executeAsync(actionName, resolvedInput) else ui.execute(actionName, resolvedInput); "media" -> mediaHandler.execute(actionName, resolvedInput); "browser" -> browser.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
+            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "ui" -> if (actionName == "ui.awaitChoice") ui.executeAsync(actionName, resolvedInput) else ui.execute(actionName, resolvedInput); "media" -> mediaHandler.execute(actionName, resolvedInput); "browser" -> browser.execute(actionName, resolvedInput); "subscription" -> subscriptionHandler.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
             Log.d(TAG, "    → Output: $result")
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = startTime))
@@ -95,12 +96,36 @@ class WorkflowExecutor @Inject constructor(
     private fun resolveVariables(input: JSONObject, context: WorkflowExecutionContext) = JSONObject().apply { input.keys().forEach { key -> put(key, resolveValue(input.get(key), context)) } }
     private fun resolveValue(value: Any, context: WorkflowExecutionContext): Any = when (value) { is String -> resolveString(value, context); is JSONObject -> resolveVariables(value, context); is JSONArray -> resolveArray(value, context); else -> value }
     private fun resolveArray(array: JSONArray, context: WorkflowExecutionContext) = JSONArray().apply { (0 until array.length()).forEach { put(resolveValue(array.get(it), context)) } }
-    private fun resolveString(str: String, context: WorkflowExecutionContext): Any = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""").findAll(str).toList().let { matches -> when { matches.isEmpty() -> str; matches.size == 1 && matches[0].value == str -> resolveVariablePath(matches[0].groupValues[1], context); else -> matches.fold(str) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).toString()) } } }
-    private fun resolveVariablePath(path: String, context: WorkflowExecutionContext): Any = path.split(".").drop(1).fold(context.variables[path.split(".")[0]] as Any? ?: throw MissingVariableException(path.split(".")[0])) { current, part -> when (current) { is JSONObject -> if (current.has(part)) current.get(part) else throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is JSONArray -> if (part == "length") current.length() else part.toIntOrNull()?.let { index -> if (index >= 0 && index < current.length()) current.get(index) else throw MissingVariableException("${path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")} (index out of bounds)") } ?: throw IllegalArgumentException("Invalid array index: $part"); is Map<*, *> -> current[part] ?: throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is List<*> -> current.getOrNull(part.toIntOrNull() ?: throw IllegalArgumentException("Invalid list index: $part")) ?: throw MissingVariableException("${path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")} (index out of bounds)"); is String -> if (part == "length") current.length else tryParseJsonAndAccess(current, part, path); else -> throw IllegalArgumentException("Cannot access property '$part' on ${current::class.simpleName}") } }
+    private fun resolveString(str: String, context: WorkflowExecutionContext): Any = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\]))*)""").findAll(str).toList().let { matches -> when { matches.isEmpty() -> str; matches.size == 1 && matches[0].value == str -> resolveVariablePath(matches[0].groupValues[1], context); else -> matches.fold(str) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).toString()) } } }
+    private fun resolveVariablePath(path: String, context: WorkflowExecutionContext): Any {
+        val segments = parsePathSegments(path)
+        val varName = segments.first()
+        return segments.drop(1).fold(context.variables[varName] as Any? ?: throw MissingVariableException(varName)) { current, segment ->
+            when {
+                segment.startsWith("[") -> {
+                    val index = segment.removeSurrounding("[", "]").toInt()
+                    when (current) {
+                        is JSONArray -> if (index >= 0 && index < current.length()) current.get(index) else throw MissingVariableException("$path (index out of bounds)")
+                        is List<*> -> current.getOrNull(index) ?: throw MissingVariableException("$path (index out of bounds)")
+                        else -> throw IllegalArgumentException("Cannot index into ${current::class.simpleName}")
+                    }
+                }
+                else -> when (current) {
+                    is JSONObject -> if (current.has(segment)) current.get(segment) else throw MissingVariableException(path)
+                    is JSONArray -> if (segment == "length") current.length() else segment.toIntOrNull()?.let { i -> if (i >= 0 && i < current.length()) current.get(i) else throw MissingVariableException("$path (index out of bounds)") } ?: throw IllegalArgumentException("Invalid array index: $segment")
+                    is Map<*, *> -> current[segment] ?: throw MissingVariableException(path)
+                    is List<*> -> if (segment == "length") current.size else current.getOrNull(segment.toIntOrNull() ?: throw IllegalArgumentException("Invalid list index: $segment")) ?: throw MissingVariableException("$path (index out of bounds)")
+                    is String -> if (segment == "length") current.length else tryParseJsonAndAccess(current, segment, path)
+                    else -> throw IllegalArgumentException("Cannot access property '$segment' on ${current::class.simpleName}")
+                }
+            }
+        }
+    }
+    private fun parsePathSegments(path: String): List<String> = mutableListOf<String>().also { segments -> val current = StringBuilder(); var i = 0; while (i < path.length) { when { path[i] == '.' -> { if (current.isNotEmpty()) segments.add(current.toString()); current.clear(); i++ }; path[i] == '[' -> { if (current.isNotEmpty()) segments.add(current.toString()); current.clear(); val end = path.indexOf(']', i); segments.add(path.substring(i, end + 1)); i = end + 1 }; else -> { current.append(path[i]); i++ } } }; if (current.isNotEmpty()) segments.add(current.toString()) }
     private fun tryParseJsonAndAccess(jsonString: String, property: String, fullPath: String): Any = runCatching { jsonString.trim().let { s -> if (s.startsWith("```json")) s.substringAfter("```json").substringBefore("```").trim() else if (s.startsWith("```")) s.substringAfter("```").substringBefore("```").trim() else s }.let { JSONObject(it).let { json -> if (json.has(property)) json.get(property) else throw MissingVariableException(fullPath) } } }.getOrElse { Log.e(TAG, "Failed to parse JSON string for path $fullPath. String value: \"$jsonString\"", it); throw IllegalArgumentException("Cannot access property '$property' on String (not valid JSON). Value: \"${jsonString.take(100)}${if (jsonString.length > 100) "..." else ""}\"") }
     class MissingVariableException(varName: String) : Exception("Variable not found: \$$varName")
     private fun evaluateCondition(condition: String, context: WorkflowExecutionContext) = evaluateExpression(resolveVariablesInCondition(condition, context))
-    private fun resolveVariablesInCondition(condition: String, context: WorkflowExecutionContext): String = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""").findAll(condition).fold(condition) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).let { value -> when (value) { null -> "null"; is String -> "\"${value.replace("\"", "\\\"")}\""; is Boolean -> value.toString(); is Number -> value.toString(); else -> "\"$value\"" } }) }
+    private fun resolveVariablesInCondition(condition: String, context: WorkflowExecutionContext): String = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\]))*)""").findAll(condition).fold(condition) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).let { value -> when (value) { null -> "null"; is String -> "\"${value.replace("\"", "\\\"")}\""; is Boolean -> value.toString(); is Number -> value.toString(); else -> "\"$value\"" } }) }
     private fun evaluateExpression(expr: String) = evaluateOr(expr.trim())
     private fun evaluateOr(expr: String) = splitByOperator(expr, "||").let { parts -> if (parts.size == 1) evaluateAnd(parts[0]) else parts.any { evaluateAnd(it) } }
     private fun evaluateAnd(expr: String) = splitByOperator(expr, "&&").let { parts -> if (parts.size == 1) evaluateComparison(parts[0]) else parts.all { evaluateComparison(it) } }

@@ -484,7 +484,7 @@
     "category": "web_research",
     "description": "AI finds weather info, extracts, summarizes",
     "audioFile": "test_audio/get_weather_forecast.wav",
-    "utterance": "get me the weather forecast for this week",
+    "utterance": "give me the weather forecast for this week",
     "expected": {
       "workflowMatched": "get_weather",
       "workflowExecuted": true,
@@ -518,7 +518,7 @@
     "category": "web_research",
     "description": "AI gathers and summarizes news from multiple sources",
     "audioFile": "test_audio/summarize_news.wav",
-    "utterance": "summarize today's tech news",
+    "utterance": "summarize this week's tech news",
     "expected": {
       "workflowMatched": "summarize_news",
       "workflowExecuted": true,
@@ -535,7 +535,7 @@
     "category": "web_research",
     "description": "AI answers specific question by researching web",
     "audioFile": "test_audio/answer_question_from_web.wav",
-    "utterance": "when is the next spacex launch",
+    "utterance": "when does spacex launch",
     "expected": {
       "workflowMatched": "web_answer",
       "workflowExecuted": true,
@@ -544,6 +544,125 @@
       "databaseChanges": {
         "WorkflowExecution": {"count": 1},
         "ActionExecution": {"minCount": 5}
+      }
+    }
+  },
+  {
+    "testId": "play_latest_podcast",
+    "category": "subscriptions",
+    "description": "Play latest episode from a subscribed podcast",
+    "audioFile": "test_audio/play_latest_podcast.wav",
+    "utterance": "play latest podcast",
+    "preconditions": [
+      {"action": "subscription.subscribe", "input": {"platform": "podcast", "identifier": "https://feeds.simplecast.com/54nAGcIl"}}
+    ],
+    "expected": {
+      "workflowMatched": "play_latest_podcast",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "subscription.list", "llm.prompt", "subscription.listContent", "subscription.getContent", "media.play.podcast", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 6}
+      },
+      "serviceStateChanges": {"music_player_playing": true}
+    }
+  },
+  {
+    "testId": "play_latest_podcast_specific",
+    "category": "subscriptions",
+    "description": "Play latest from a specific podcast by name",
+    "audioFile": "test_audio/play_latest_podcast_specific.wav",
+    "utterance": "play latest episode of the daily",
+    "preconditions": [
+      {"action": "subscription.subscribe", "input": {"platform": "podcast", "identifier": "https://feeds.simplecast.com/54nAGcIl"}}
+    ],
+    "expected": {
+      "workflowMatched": "play_latest_podcast",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "subscription.list", "llm.prompt", "subscription.listContent", "subscription.getContent", "media.play.podcast", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 6}
+      }
+    }
+  },
+  {
+    "testId": "play_latest_youtube",
+    "category": "subscriptions",
+    "description": "Play latest video from a subscribed YouTube channel",
+    "audioFile": "test_audio/play_latest_youtube.wav",
+    "utterance": "play latest youtube video",
+    "preconditions": [
+      {"action": "subscription.subscribe", "input": {"platform": "youtube", "identifier": "UC-lHJZR3Gqxm24_Vd_AJ5Yw"}}
+    ],
+    "expected": {
+      "workflowMatched": "play_latest_youtube",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "subscription.list", "llm.prompt", "subscription.listContent", "subscription.getContent", "media.play.youtube", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 6}
+      },
+      "serviceStateChanges": {"music_player_playing": true}
+    }
+  },
+  {
+    "testId": "play_latest_podcast_no_subscriptions",
+    "category": "edge_cases",
+    "description": "Play latest podcast when no subscriptions exist - graceful handling",
+    "audioFile": "test_audio/play_latest_podcast_no_subscriptions.wav",
+    "utterance": "play latest podcast",
+    "preconditions": [
+      {"clearSubscriptions": "podcast"}
+    ],
+    "expected": {
+      "workflowMatched": "play_latest_podcast",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "subscription.list", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 3}
+      }
+    }
+  },
+  {
+    "testId": "play_latest_youtube_no_subscriptions",
+    "category": "edge_cases",
+    "description": "Play latest YouTube when no subscriptions exist - graceful handling",
+    "audioFile": "test_audio/play_latest_youtube_no_subscriptions.wav",
+    "utterance": "play latest youtube video",
+    "preconditions": [
+      {"clearSubscriptions": "youtube"}
+    ],
+    "expected": {
+      "workflowMatched": "play_latest_youtube",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["llm.prompt", "subscription.list", "tts.speak"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 3}
+      }
+    }
+  },
+  {
+    "testId": "play_youtube_video_about_topic",
+    "category": "music",
+    "description": "User says 'play a YouTube video about [topic]' - should trigger play_music with YouTube fallback",
+    "audioFile": "test_audio/play_youtube_video_about_topic.wav",
+    "utterance": "play a YouTube video about how squirrels make their nests",
+    "expected": {
+      "workflowMatched": "play_music",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "actionsExecuted": ["media.play"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 1}
       }
     }
   }

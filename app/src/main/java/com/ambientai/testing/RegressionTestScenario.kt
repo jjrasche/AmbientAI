@@ -16,7 +16,8 @@ data class PreconditionStep(
     val action: String? = null,
     val input: Map<String, Any> = emptyMap(),
     val wait: Long? = null,
-    val clearActiveTasks: Boolean? = null
+    val clearActiveTasks: Boolean? = null,
+    val clearSubscriptions: String? = null  // "podcast", "youtube", or "all"
 )
 
 data class TestExpectations(

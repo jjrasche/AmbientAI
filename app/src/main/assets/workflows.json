@@ -273,8 +273,8 @@
       "enabled": true,
       "definition": {
         "triggers": {
-          "keywords": ["play"],
-          "conditions": {}
+          "keywords": ["play some music", "play music", "play song", "listen to", "play artist", "play album", "shuffle", "put on some", "play a youtube video", "play youtube video", "play video about", "play a video about", "play youtube"],
+          "fallback": "play"
         },
         "requiresInput": true,
         "steps": [
@@ -675,6 +675,186 @@
           {
             "action": "browser.close",
             "input": {"sessionId": "$session.sessionId"}
+          }
+        ]
+      }
+    },
+    {
+      "name": "play_latest_podcast",
+      "enabled": true,
+      "definition": {
+        "triggers": ["play latest podcast", "latest podcast", "play latest from", "play newest episode", "latest episode", "newest from", "play latest episode", "latest episode of", "newest episode of"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Extract the podcast/show name from the user's request. Return only the name, nothing else.",
+              "userPrompt": "$transcript",
+              "temperature": 0.1,
+              "maxTokens": 50
+            },
+            "output": "showName"
+          },
+          {
+            "action": "subscription.list",
+            "input": {"platform": "podcast"},
+            "output": "subscriptions"
+          },
+          {
+            "action": "control.if",
+            "condition": "$subscriptions.count > 0",
+            "then": [
+              {
+                "action": "llm.prompt",
+                "input": {
+                  "systemPrompt": "Match the show name to one of the subscriptions. Return ONLY valid JSON: {\"subscription_id\": <id>, \"title\": \"matched title\"}. If no match found, return {\"subscription_id\": 0, \"title\": \"\"}",
+                  "userPrompt": "Find: $showName.response\n\nSubscriptions:\n$subscriptions.subscriptions",
+                  "temperature": 0.1,
+                  "maxTokens": 50
+                },
+                "output": "matched"
+              },
+              {
+                "action": "control.if",
+                "condition": "$matched.response.subscription_id > 0",
+                "then": [
+                  {
+                    "action": "subscription.listContent",
+                    "input": {
+                      "platform": "podcast",
+                      "subscription_id": "$matched.response.subscription_id",
+                      "limit": 1
+                    },
+                    "output": "episodes"
+                  },
+                  {
+                    "action": "control.if",
+                    "condition": "$episodes.count > 0",
+                    "then": [
+                      {
+                        "action": "subscription.getContent",
+                        "input": {
+                          "platform": "podcast",
+                          "id": "$episodes.items[0].id"
+                        },
+                        "output": "episode"
+                      },
+                      {
+                        "action": "media.play.podcast",
+                        "input": {
+                          "query": "$episode.title"
+                        },
+                        "output": "playResult"
+                      },
+                      {
+                        "action": "tts.speak",
+                        "input": {"text": "Playing $episode.title from $matched.response.title"}
+                      }
+                    ],
+                    "else": [
+                      {"action": "tts.speak", "input": {"text": "No episodes found for $matched.response.title"}}
+                    ]
+                  }
+                ],
+                "else": [
+                  {"action": "tts.speak", "input": {"text": "Couldn't find podcast matching $showName.response"}}
+                ]
+              }
+            ],
+            "else": [
+              {"action": "tts.speak", "input": {"text": "You don't have any podcast subscriptions"}}
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "play_latest_youtube",
+      "enabled": true,
+      "definition": {
+        "triggers": ["play latest youtube", "latest youtube video", "play latest youtube video", "play latest video from", "play newest video", "latest video from", "newest video from"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Extract the YouTube channel name from the user's request. Return only the name, nothing else.",
+              "userPrompt": "$transcript",
+              "temperature": 0.1,
+              "maxTokens": 50
+            },
+            "output": "channelName"
+          },
+          {
+            "action": "subscription.list",
+            "input": {"platform": "youtube"},
+            "output": "subscriptions"
+          },
+          {
+            "action": "control.if",
+            "condition": "$subscriptions.count > 0",
+            "then": [
+              {
+                "action": "llm.prompt",
+                "input": {
+                  "systemPrompt": "Match the channel name to one of the subscriptions. Return ONLY valid JSON: {\"subscription_id\": <id>, \"channel_name\": \"matched name\"}. If no match found, return {\"subscription_id\": 0, \"channel_name\": \"\"}",
+                  "userPrompt": "Find: $channelName.response\n\nSubscriptions:\n$subscriptions.subscriptions",
+                  "temperature": 0.1,
+                  "maxTokens": 50
+                },
+                "output": "matched"
+              },
+              {
+                "action": "control.if",
+                "condition": "$matched.response.subscription_id > 0",
+                "then": [
+                  {
+                    "action": "subscription.listContent",
+                    "input": {
+                      "platform": "youtube",
+                      "subscription_id": "$matched.response.subscription_id",
+                      "limit": 1
+                    },
+                    "output": "videos"
+                  },
+                  {
+                    "action": "control.if",
+                    "condition": "$videos.count > 0",
+                    "then": [
+                      {
+                        "action": "subscription.getContent",
+                        "input": {
+                          "platform": "youtube",
+                          "id": "$videos.items[0].id"
+                        },
+                        "output": "video"
+                      },
+                      {
+                        "action": "media.play.youtube",
+                        "input": {
+                          "query": "$video.title"
+                        },
+                        "output": "playResult"
+                      },
+                      {
+                        "action": "tts.speak",
+                        "input": {"text": "Playing $video.title from $matched.response.channel_name"}
+                      }
+                    ],
+                    "else": [
+                      {"action": "tts.speak", "input": {"text": "No videos found for $matched.response.channel_name"}}
+                    ]
+                  }
+                ],
+                "else": [
+                  {"action": "tts.speak", "input": {"text": "Couldn't find channel matching $channelName.response"}}
+                ]
+              }
+            ],
+            "else": [
+              {"action": "tts.speak", "input": {"text": "You don't have any YouTube subscriptions"}}
+            ]
           }
         ]
       }

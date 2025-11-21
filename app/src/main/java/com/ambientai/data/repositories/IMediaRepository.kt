@@ -13,4 +13,7 @@ interface IMediaRepository {
     fun getByMediaType(mediaType: String): List<Media>
     fun updatePlaybackPosition(id: Long, positionMs: Long)
     fun getAllMedia(): Flow<List<Media>>
+    fun markCompleted(id: Long, completed: Boolean)
+    fun updateDownloadStatus(id: Long, status: String)
+    fun updateLocalFilePath(id: Long, path: String)
 }

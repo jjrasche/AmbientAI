@@ -1,5 +1,7 @@
 package com.ambientai.di
 
+import com.ambientai.core.media.MediaLibrary
+import com.ambientai.core.media.MediaLibraryImpl
 import com.ambientai.data.repositories.*
 import dagger.Binds
 import dagger.Module
@@ -77,4 +79,24 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindMediaPlaybackSessionRepository(impl: MediaPlaybackSessionRepository): IMediaPlaybackSessionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPodcastSubscriptionRepository(impl: PodcastSubscriptionRepository): IPodcastSubscriptionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindPodcastEpisodeRepository(impl: PodcastEpisodeRepository): IPodcastEpisodeRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindYouTubeVideoRepository(impl: YouTubeVideoRepository): IYouTubeVideoRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindYouTubeSubscriptionRepository(impl: YouTubeSubscriptionRepository): IYouTubeSubscriptionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindMediaLibrary(impl: MediaLibraryImpl): MediaLibrary
 }

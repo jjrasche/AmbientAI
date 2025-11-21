@@ -81,7 +81,8 @@ class WorkflowExecutorTest {
             workflowActions = workflowActions,
             ui = ui,
             mediaHandler = mediaHandler,
-            browser = mockk(relaxed = true)
+            browser = mockk(relaxed = true),
+            subscriptionHandler = mockk(relaxed = true)
         )
     }
 

@@ -4,7 +4,12 @@ import android.content.Context
 import android.util.Log
 import com.ambientai.core.browser.BrowserService
 import com.ambientai.core.media.MediaHandler
+import com.ambientai.core.media.PodcastSubscriptionManager
+import com.ambientai.core.media.SubscriptionWorkflowHandler
+import com.ambientai.core.media.YouTubeSubscriptionManager
 import com.ambientai.core.task.TaskManager
+import com.ambientai.core.tts.TextToSpeechService
+import kotlinx.coroutines.flow.first
 import com.ambientai.core.time.TimeManager
 import com.ambientai.data.entities.Task
 import com.ambientai.data.entities.TaskStatus
@@ -36,13 +41,28 @@ class RegressionTestExecutor @Inject constructor(
     private val taskManager: TaskManager,
     private val timeManager: TimeManager,
     private val playbackStateManager: com.ambientai.core.music.PlaybackStateManager,
-    private val browserService: BrowserService
+    private val browserService: BrowserService,
+    private val subscriptionHandler: SubscriptionWorkflowHandler,
+    private val podcastManager: PodcastSubscriptionManager,
+    private val youtubeManager: YouTubeSubscriptionManager,
+    private val ttsService: TextToSpeechService
 ) {
     companion object {
         private const val TAG = "RegressionTest"
         private const val DEFAULT_TIMEOUT_MS = 5000L
         private const val POLL_INTERVAL_MS = 100L
         private const val STT_TIMEOUT_MS = 120000L
+    }
+
+    suspend fun runTests(scenarios: List<RegressionTestScenario>, skipTts: Boolean = true): List<TestResult> {
+        val originalTestMode = ttsService.testMode
+        try {
+            ttsService.testMode = skipTts
+            Log.d(TAG, "🧪 Running ${scenarios.size} tests (skipTts=$skipTts)")
+            return scenarios.map { scenario -> runTest(scenario) }
+        } finally {
+            ttsService.testMode = originalTestMode
+        }
     }
 
     suspend fun runTest(scenario: RegressionTestScenario): TestResult {
@@ -138,6 +158,11 @@ class RegressionTestExecutor @Inject constructor(
             if (matches.isNotEmpty()) {
                 Log.d(TAG, "  → Matched ${matches.size} workflow(s): ${matches.map { it.definition.name }}")
                 matches.forEach { match ->
+                    // Check conditions at execution time (same as VoiceListeningService)
+                    if (!workflowRouter.checkConditions(match.definition)) {
+                        Log.d(TAG, "  ⏭ SKIPPING ${match.definition.name}: conditions not met")
+                        return@forEach
+                    }
                     Log.d(TAG, "  → Executing: ${match.definition.name}")
                     workflowExecutor.execute(match)
                 }
@@ -255,6 +280,25 @@ class RegressionTestExecutor @Inject constructor(
                         if (result == null || !result.has("id")) break
                     }
                 }
+                step.clearSubscriptions != null -> {
+                    Log.d(TAG, "  🧹 clearing ${step.clearSubscriptions} subscriptions")
+                    when (step.clearSubscriptions.lowercase()) {
+                        "podcast" -> podcastManager.getSubscriptions().first().forEach { sub ->
+                            podcastManager.unsubscribe(sub.id)
+                        }
+                        "youtube" -> youtubeManager.getSubscriptions().first().forEach { sub ->
+                            youtubeManager.unsubscribe(sub.id)
+                        }
+                        "all" -> {
+                            podcastManager.getSubscriptions().first().forEach { sub ->
+                                podcastManager.unsubscribe(sub.id)
+                            }
+                            youtubeManager.getSubscriptions().first().forEach { sub ->
+                                youtubeManager.unsubscribe(sub.id)
+                            }
+                        }
+                    }
+                }
                 step.action != null -> {
                     val input = JSONObject(step.input)
                     Log.d(TAG, "  → ${step.action}: ${input.toString().take(50)}")
@@ -275,6 +319,7 @@ class RegressionTestExecutor @Inject constructor(
         action.startsWith("task.") -> taskManager.execute(action, input)
         action.startsWith("timer.") -> timeManager.execute(action, input)
         action.startsWith("browser.") -> browserService.execute(action, input)
+        action.startsWith("subscription.") -> subscriptionHandler.execute(action, input)
         else -> JSONObject().apply { put("success", false); put("error", "Unknown action namespace: $action") }
     }
 
@@ -481,6 +526,14 @@ class RegressionTestExecutor @Inject constructor(
             // Cancel any active timers
             if (timeManager.hasActiveTimer()) {
                 timeManager.execute("timer.cancel", JSONObject())
+            }
+
+            // Clean up test subscriptions
+            podcastManager.getSubscriptions().first().forEach { sub ->
+                podcastManager.unsubscribe(sub.id)
+            }
+            youtubeManager.getSubscriptions().first().forEach { sub ->
+                youtubeManager.unsubscribe(sub.id)
             }
 
             // Note: Database cleanup happens via in-memory ObjectBox (close DB in test teardown)
