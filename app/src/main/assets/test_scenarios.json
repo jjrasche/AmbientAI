@@ -664,5 +664,82 @@
         "ActionExecution": {"minCount": 1}
       }
     }
+  },
+  {
+    "testId": "streaming_workflow_single_final",
+    "category": "streaming_execution",
+    "description": "Execute workflow on first final while recording continues",
+    "audioFile": "test_audio/streaming_workflow_single_final.wav",
+    "utterance": "play some music [pause] and make it loud",
+    "expected": {
+      "workflowMatched": "play_music",
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "streamingExecution": true,
+      "executedOnFinal": 1,
+      "recordingContinued": true,
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 1},
+        "ActionExecution": {"minCount": 1}
+      },
+      "serviceStateChanges": {"music_player_playing": true}
+    }
+  },
+  {
+    "testId": "streaming_workflow_multiple_finals",
+    "category": "streaming_execution",
+    "description": "Execute multiple workflows as each final arrives during recording",
+    "audioFile": "test_audio/streaming_workflow_multiple_finals.wav",
+    "utterance": "play some music [pause] stop [pause] start a coding task",
+    "expected": {
+      "workflowsMatched": ["play_music", "stop_music", "start_task"],
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "streamingExecution": true,
+      "workflowExecutionOrder": ["play_music", "stop_music", "start_task"],
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 3},
+        "ActionExecution": {"minCount": 3},
+        "Task": {"count": 1, "nameContains": "coding"}
+      },
+      "serviceStateChanges": {"music_player_playing": false}
+    }
+  },
+  {
+    "testId": "streaming_workflow_state_propagation",
+    "category": "streaming_execution",
+    "description": "State changes from workflow N satisfy conditions for workflow N+1",
+    "audioFile": "test_audio/streaming_workflow_state_propagation.wav",
+    "utterance": "play some music [pause] pause [pause] resume",
+    "expected": {
+      "workflowsMatched": ["play_music", "pause_music", "resume_music"],
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "streamingExecution": true,
+      "conditionsSatisfiedByPreviousWorkflow": true,
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 3},
+        "ActionExecution": {"minCount": 3}
+      },
+      "serviceStateChanges": {"music_player_playing": true}
+    }
+  },
+  {
+    "testId": "streaming_workflow_tts_suppression",
+    "category": "streaming_execution",
+    "description": "TTS is suppressed when user continues speaking after workflow execution",
+    "audioFile": "test_audio/streaming_workflow_tts_suppression.wav",
+    "utterance": "what time is it [pause] also set a timer for five minutes",
+    "expected": {
+      "workflowsMatched": ["get_time", "set_timer"],
+      "workflowExecuted": true,
+      "workflowSuccess": true,
+      "streamingExecution": true,
+      "ttsSuppressedDuringContinuedSpeech": true,
+      "databaseChanges": {
+        "WorkflowExecution": {"count": 2},
+        "ActionExecution": {"minCount": 3}
+      }
+    }
   }
 ]
