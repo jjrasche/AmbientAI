@@ -41,19 +41,17 @@ class WorkflowRouter @Inject constructor(
         val lowerTranscript = transcript.lowercase()
         Log.d(TAG, "🔍 ROUTING: \"$transcript\" ($wordCount words)${if (isPartial) " [PARTIAL]" else ""}")
 
-        // Find all trigger matches with their positions
+        // Find all trigger matches with their positions (conditions checked at execution time)
         val allMatches = mutableListOf<PositionedMatch>()
         workflows.forEach { workflow ->
-            if (checkConditions(workflow)) {
-                parseTriggers(workflow.definition).forEach { trigger ->
-                    val triggerLower = trigger.lowercase()
-                    var searchStart = 0
-                    while (true) {
-                        val position = lowerTranscript.indexOf(triggerLower, searchStart)
-                        if (position == -1) break
-                        allMatches.add(PositionedMatch(workflow, trigger, position, trigger.length))
-                        searchStart = position + 1
-                    }
+            parseTriggers(workflow.definition).forEach { trigger ->
+                val triggerLower = trigger.lowercase()
+                var searchStart = 0
+                while (true) {
+                    val position = lowerTranscript.indexOf(triggerLower, searchStart)
+                    if (position == -1) break
+                    allMatches.add(PositionedMatch(workflow, trigger, position, trigger.length))
+                    searchStart = position + 1
                 }
             }
         }
@@ -80,7 +78,7 @@ class WorkflowRouter @Inject constructor(
             if (match.position >= lastEndPosition) {
                 val existing = selectedMatches.lastOrNull()
                 if (existing != null && existing.position == match.position && match.length > existing.length) {
-                    selectedMatches.removeLast()
+                    selectedMatches.removeAt(selectedMatches.lastIndex)
                     selectedMatches.add(match)
                     lastEndPosition = match.position + match.length
                 } else if (existing == null || existing.position != match.position) {
@@ -136,7 +134,7 @@ class WorkflowRouter @Inject constructor(
     private fun createConversationalDefault(transcript: String, transcriptId: Long) = WorkflowDefinition(id = -1, name = "conversational_default", enabled = true, definition = """{"triggers":{"keywords":[]},"steps":[{"action":"llm.prompt","input":{"systemPrompt":"You are a helpful voice assistant. Provide brief, conversational responses.","userPrompt":"$transcript","temperature":0.7,"maxTokens":50},"output":"response"},{"action":"tts.speak","input":{"text":"${'$'}response.response"}}]}""").let { defaultWorkflow -> WorkflowExecutionContext(workflowId = -1, workflowName = "conversational_default", transcript = transcript, matchedTrigger = "(default)").apply { variables["transcript"] = transcript; variables["transcriptId"] = transcriptId }.let { context -> WorkflowMatch(defaultWorkflow, context) } }
     private fun findMatchingTrigger(workflow: WorkflowDefinition, lowerTranscript: String): String? = parseTriggers(workflow.definition).firstOrNull { trigger -> lowerTranscript.contains(trigger.lowercase()) }
     private fun parseTriggers(workflowJson: String) = runCatching { JSONObject(workflowJson).let { json -> json.optJSONObject("triggers")?.let { triggersObj -> triggersObj.optJSONArray("keywords")?.let { keywordsArray -> List(keywordsArray.length()) { i -> keywordsArray.getString(i) } } ?: emptyList() } ?: json.optJSONArray("triggers")?.let { triggersArray -> List(triggersArray.length()) { i -> triggersArray.getString(i) } } ?: emptyList() } }.getOrElse { emptyList() }
-    private fun checkConditions(workflow: WorkflowDefinition): Boolean = runCatching {
+    fun checkConditions(workflow: WorkflowDefinition): Boolean = runCatching {
         JSONObject(workflow.definition).optJSONObject("triggers")?.optJSONObject("conditions")?.let { conditions ->
             conditions.keys().asSequence().all { key ->
                 when (key) {

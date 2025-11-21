@@ -287,16 +287,27 @@ class VoiceListeningService : Service() {
                 speak("No workflow matched.")
             } else {
                 Log.d(TAG, "✓ MATCHED ${matches.size} WORKFLOW(S): ${matches.map { it.definition.name }}")
-                matches.forEachIndexed { index, match ->
-                    if (index == 0) {
+                var executedCount = 0
+                matches.forEach { match ->
+                    // Check conditions at execution time (allows sequential workflows to affect state)
+                    if (!workflowRouter.checkConditions(match.definition)) {
+                        Log.d(TAG, "⏭ SKIPPING ${match.definition.name}: conditions not met")
+                        return@forEach
+                    }
+                    if (executedCount == 0) {
                         listeners.forEach { it.onWorkflowStarted(match.definition.name, text) }
                         updateGoldenDatasetWithWorkflow(transcriptId, match.definition.name)
                     }
                     val result = workflowExecutor.execute(match)
+                    executedCount++
                     when (result) {
                         is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); if (matches.size == 1) speak("Workflow failed: ${result.error}") }
-                        else -> Log.d(TAG, "✓ WORKFLOW ${index + 1}/${matches.size} SUCCEEDED")
+                        else -> Log.d(TAG, "✓ WORKFLOW $executedCount SUCCEEDED")
                     }
+                }
+                if (executedCount == 0) {
+                    Log.w(TAG, "⚠ All workflows skipped due to conditions")
+                    speak("No workflow matched.")
                 }
             }
             resumeMusicIfNeeded()

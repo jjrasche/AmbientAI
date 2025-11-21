@@ -1,6 +1,7 @@
 package com.ambientai.workflow
 
 import android.util.Log
+import com.ambientai.core.browser.BrowserService
 import com.ambientai.core.llm.GroqLlmService
 import com.ambientai.core.log.LogManager
 import com.ambientai.core.search.SearchService
@@ -32,7 +33,8 @@ class WorkflowExecutor @Inject constructor(
     private val time: TimeManager,
     private val workflowActions: WorkflowActionHandler,
     private val ui: UiService,
-    private val mediaHandler: com.ambientai.core.media.MediaHandler
+    private val mediaHandler: com.ambientai.core.media.MediaHandler,
+    private val browser: BrowserService
 ) {
     companion object { private const val TAG = "WorkflowExecutor" }
     private var completionTriggers = mapOf<String, List<Long>>()
@@ -78,7 +80,7 @@ class WorkflowExecutor @Inject constructor(
         runCatching {
             val resolvedInput = resolveVariables(inputJson, context)
             Log.d(TAG, "    → Input: $resolvedInput")
-            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "ui" -> if (actionName == "ui.awaitChoice") ui.executeAsync(actionName, resolvedInput) else ui.execute(actionName, resolvedInput); "media" -> mediaHandler.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
+            val result = when (actionName.substringBefore(".")) { "task" -> tasks.execute(actionName, resolvedInput); "llm" -> llm.execute(actionName, resolvedInput); "tts" -> tts.execute(actionName, resolvedInput); "search" -> search.execute(actionName, resolvedInput); "log" -> logs.execute(actionName, resolvedInput); "time" -> time.execute(actionName, resolvedInput); "timer" -> time.execute(actionName, resolvedInput); "workflow" -> workflowActions.execute(actionName, resolvedInput); "ui" -> if (actionName == "ui.awaitChoice") ui.executeAsync(actionName, resolvedInput) else ui.execute(actionName, resolvedInput); "media" -> mediaHandler.execute(actionName, resolvedInput); "browser" -> browser.execute(actionName, resolvedInput); else -> throw UnknownActionException(actionName) }
             Log.d(TAG, "    → Output: $result")
             outputVar?.takeIf { result != null }?.let { context.variables[it] = result!! }
             executionRepo.saveAction(ActionExecution(workflowExecutionId = executionId, stepIndex = stepIndex, stepPath = stepPath, actionName = actionName, inputJson = resolvedInput.toString(), outputJson = result?.toString() ?: "", success = true, latencyMs = System.currentTimeMillis() - startTime, timestamp = startTime))
@@ -95,7 +97,7 @@ class WorkflowExecutor @Inject constructor(
     private fun resolveArray(array: JSONArray, context: WorkflowExecutionContext) = JSONArray().apply { (0 until array.length()).forEach { put(resolveValue(array.get(it), context)) } }
     private fun resolveString(str: String, context: WorkflowExecutionContext): Any = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""").findAll(str).toList().let { matches -> when { matches.isEmpty() -> str; matches.size == 1 && matches[0].value == str -> resolveVariablePath(matches[0].groupValues[1], context); else -> matches.fold(str) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).toString()) } } }
     private fun resolveVariablePath(path: String, context: WorkflowExecutionContext): Any = path.split(".").drop(1).fold(context.variables[path.split(".")[0]] as Any? ?: throw MissingVariableException(path.split(".")[0])) { current, part -> when (current) { is JSONObject -> if (current.has(part)) current.get(part) else throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is JSONArray -> if (part == "length") current.length() else part.toIntOrNull()?.let { index -> if (index >= 0 && index < current.length()) current.get(index) else throw MissingVariableException("${path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")} (index out of bounds)") } ?: throw IllegalArgumentException("Invalid array index: $part"); is Map<*, *> -> current[part] ?: throw MissingVariableException(path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")); is List<*> -> current.getOrNull(part.toIntOrNull() ?: throw IllegalArgumentException("Invalid list index: $part")) ?: throw MissingVariableException("${path.split(".").take(path.split(".").indexOf(part) + 1).joinToString(".")} (index out of bounds)"); is String -> if (part == "length") current.length else tryParseJsonAndAccess(current, part, path); else -> throw IllegalArgumentException("Cannot access property '$part' on ${current::class.simpleName}") } }
-    private fun tryParseJsonAndAccess(jsonString: String, property: String, fullPath: String): Any = runCatching { JSONObject(jsonString.trim()).let { if (it.has(property)) it.get(property) else throw MissingVariableException(fullPath) } }.getOrElse { Log.e(TAG, "Failed to parse JSON string for path $fullPath. String value: \"$jsonString\"", it); throw IllegalArgumentException("Cannot access property '$property' on String (not valid JSON). Value: \"${jsonString.take(100)}${if (jsonString.length > 100) "..." else ""}\"") }
+    private fun tryParseJsonAndAccess(jsonString: String, property: String, fullPath: String): Any = runCatching { jsonString.trim().let { s -> if (s.startsWith("```json")) s.substringAfter("```json").substringBefore("```").trim() else if (s.startsWith("```")) s.substringAfter("```").substringBefore("```").trim() else s }.let { JSONObject(it).let { json -> if (json.has(property)) json.get(property) else throw MissingVariableException(fullPath) } } }.getOrElse { Log.e(TAG, "Failed to parse JSON string for path $fullPath. String value: \"$jsonString\"", it); throw IllegalArgumentException("Cannot access property '$property' on String (not valid JSON). Value: \"${jsonString.take(100)}${if (jsonString.length > 100) "..." else ""}\"") }
     class MissingVariableException(varName: String) : Exception("Variable not found: \$$varName")
     private fun evaluateCondition(condition: String, context: WorkflowExecutionContext) = evaluateExpression(resolveVariablesInCondition(condition, context))
     private fun resolveVariablesInCondition(condition: String, context: WorkflowExecutionContext): String = Regex("""\$([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)*)""").findAll(condition).fold(condition) { result, match -> result.replace(match.value, resolveVariablePath(match.groupValues[1], context).let { value -> when (value) { null -> "null"; is String -> "\"${value.replace("\"", "\\\"")}\""; is Boolean -> value.toString(); is Number -> value.toString(); else -> "\"$value\"" } }) }

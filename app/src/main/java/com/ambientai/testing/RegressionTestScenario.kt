@@ -15,7 +15,8 @@ data class RegressionTestScenario(
 data class PreconditionStep(
     val action: String? = null,
     val input: Map<String, Any> = emptyMap(),
-    val wait: Long? = null
+    val wait: Long? = null,
+    val clearActiveTasks: Boolean? = null
 )
 
 data class TestExpectations(

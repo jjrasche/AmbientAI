@@ -428,6 +428,256 @@
           {"action": "tts.speak", "input": {"text": "$response.response"}}
         ]
       }
+    },
+    {
+      "name": "web_research",
+      "enabled": true,
+      "definition": {
+        "triggers": ["what's happening with", "what is happening with", "tell me about", "research"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Extract the research topic from the user's query. Return only the search terms, nothing else.",
+              "userPrompt": "$transcript",
+              "temperature": 0.1,
+              "maxTokens": 50
+            },
+            "output": "topic"
+          },
+          {
+            "action": "search.query",
+            "input": {
+              "query": "$topic.response news",
+              "numResults": 3
+            },
+            "output": "searchResults"
+          },
+          {
+            "action": "browser.navigate",
+            "input": {"url": "$searchResults.results.0.url"},
+            "output": "session"
+          },
+          {
+            "action": "browser.extract",
+            "input": {"sessionId": "$session.sessionId"},
+            "output": "content"
+          },
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "You are a research assistant. Analyze the web content and provide a concise, insightful summary of what's happening. Focus on key facts, recent developments, and actionable insights. Keep it under 100 words.",
+              "userPrompt": "Topic: $topic.response\n\nWeb content:\n$content.bodyText",
+              "temperature": 0.5,
+              "maxTokens": 200
+            },
+            "output": "analysis"
+          },
+          {
+            "action": "tts.speak",
+            "input": {"text": "$analysis.response"}
+          },
+          {
+            "action": "browser.close",
+            "input": {"sessionId": "$session.sessionId"}
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_weather",
+      "enabled": true,
+      "definition": {
+        "triggers": ["get me the weather", "weather forecast", "what's the weather", "how's the weather"],
+        "requiresInput": false,
+        "steps": [
+          {
+            "action": "search.query",
+            "input": {
+              "query": "weather forecast today",
+              "numResults": 1
+            },
+            "output": "searchResults"
+          },
+          {
+            "action": "browser.navigate",
+            "input": {"url": "$searchResults.results.0.url"},
+            "output": "session"
+          },
+          {
+            "action": "browser.extract",
+            "input": {"sessionId": "$session.sessionId"},
+            "output": "content"
+          },
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Extract and summarize the weather forecast from this page. Include temperature, conditions, and any notable weather events. Be conversational and brief.",
+              "userPrompt": "$content.bodyText",
+              "temperature": 0.3,
+              "maxTokens": 150
+            },
+            "output": "forecast"
+          },
+          {
+            "action": "tts.speak",
+            "input": {"text": "$forecast.response"}
+          },
+          {
+            "action": "browser.close",
+            "input": {"sessionId": "$session.sessionId"}
+          }
+        ]
+      }
+    },
+    {
+      "name": "find_code",
+      "enabled": true,
+      "definition": {
+        "triggers": ["find me some", "show me examples", "find examples", "code examples"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Extract the programming topic from the user's request. Return only the technical search terms.",
+              "userPrompt": "$transcript",
+              "temperature": 0.1,
+              "maxTokens": 50
+            },
+            "output": "topic"
+          },
+          {
+            "action": "search.query",
+            "input": {
+              "query": "$topic.response examples code",
+              "numResults": 3
+            },
+            "output": "searchResults"
+          },
+          {
+            "action": "browser.navigate",
+            "input": {"url": "$searchResults.results.0.url"},
+            "output": "session"
+          },
+          {
+            "action": "browser.extract",
+            "input": {"sessionId": "$session.sessionId"},
+            "output": "content"
+          },
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "You found code examples. Extract the most useful code snippet and explain it clearly in 2-3 sentences. Focus on what it does and when to use it.",
+              "userPrompt": "Topic: $topic.response\n\nPage content:\n$content.bodyText",
+              "temperature": 0.4,
+              "maxTokens": 250
+            },
+            "output": "explanation"
+          },
+          {
+            "action": "tts.speak",
+            "input": {"text": "$explanation.response"}
+          },
+          {
+            "action": "browser.close",
+            "input": {"sessionId": "$session.sessionId"}
+          }
+        ]
+      }
+    },
+    {
+      "name": "summarize_news",
+      "enabled": true,
+      "definition": {
+        "triggers": ["summarize", "news summary", "what's in the news", "today's news"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "search.query",
+            "input": {
+              "query": "latest $transcript",
+              "numResults": 3
+            },
+            "output": "searchResults"
+          },
+          {
+            "action": "browser.navigate",
+            "input": {"url": "$searchResults.results.0.url"},
+            "output": "session"
+          },
+          {
+            "action": "browser.extract",
+            "input": {"sessionId": "$session.sessionId"},
+            "output": "content"
+          },
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Summarize the key news from this content. Provide 3-4 bullet points of the most important stories. Be concise and informative.",
+              "userPrompt": "$content.bodyText",
+              "temperature": 0.4,
+              "maxTokens": 200
+            },
+            "output": "summary"
+          },
+          {
+            "action": "tts.speak",
+            "input": {"text": "$summary.response"}
+          },
+          {
+            "action": "browser.close",
+            "input": {"sessionId": "$session.sessionId"}
+          }
+        ]
+      }
+    },
+    {
+      "name": "web_answer",
+      "enabled": true,
+      "definition": {
+        "triggers": ["when is", "when does", "what time", "where is", "how do I"],
+        "requiresInput": true,
+        "steps": [
+          {
+            "action": "search.query",
+            "input": {
+              "query": "$transcript",
+              "numResults": 3
+            },
+            "output": "searchResults"
+          },
+          {
+            "action": "browser.navigate",
+            "input": {"url": "$searchResults.results.0.url"},
+            "output": "session"
+          },
+          {
+            "action": "browser.extract",
+            "input": {"sessionId": "$session.sessionId"},
+            "output": "content"
+          },
+          {
+            "action": "llm.prompt",
+            "input": {
+              "systemPrompt": "Answer the user's specific question based on this web content. Be direct and provide the exact information they asked for. If the information isn't available, say so clearly.",
+              "userPrompt": "Question: $transcript\n\nWeb content:\n$content.bodyText",
+              "temperature": 0.3,
+              "maxTokens": 150
+            },
+            "output": "answer"
+          },
+          {
+            "action": "tts.speak",
+            "input": {"text": "$answer.response"}
+          },
+          {
+            "action": "browser.close",
+            "input": {"sessionId": "$session.sessionId"}
+          }
+        ]
+      }
     }
   ]
 }

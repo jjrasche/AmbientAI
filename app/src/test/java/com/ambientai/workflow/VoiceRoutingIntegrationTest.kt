@@ -151,7 +151,7 @@ class VoiceRoutingIntegrationTest {
 
         val complete = partials[1].let { partial ->
             val wordCount = partial.text.split("\\s+".toRegex()).size
-            val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+            val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
             Pair(
                 incompletenessDetector.isIncomplete(partial.text, wordCount, match?.definition),
                 match
@@ -306,7 +306,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act
         val partial = Partial("play taylor swift", elapsedMs = 2800, confidence = 0.93f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val wordCount = partial.text.split("\\s+".toRegex()).size
         val isIncomplete = incompletenessDetector.isIncomplete(
             partial.text,
@@ -317,7 +317,7 @@ class VoiceRoutingIntegrationTest {
         // Assert
         assertFalse(isIncomplete, "Has 2+ words after trigger, should be complete")
         assertNotNull(match)
-        assertEquals("play_music", match.definition.name)
+        assertEquals("play_music", match!!.definition.name)
     }
 
     // ===== UTTERANCE END BEHAVIOR =====
@@ -342,7 +342,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act - Utterance doesn't match any workflow
         val partial = Partial("unknown command for", elapsedMs = 3000, confidence = 0.85f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val wordCount = partial.text.split("\\s+".toRegex()).size
         val isIncomplete = incompletenessDetector.isIncomplete(
             partial.text,
@@ -353,7 +353,7 @@ class VoiceRoutingIntegrationTest {
         // Assert
         assertTrue(isIncomplete, "Should detect trailing 'for' even without workflow match")
         assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals("conversational_default", match!!.definition.name)
     }
 
     // ===== PARTIAL VS FINAL DISTINCTION =====
@@ -370,7 +370,7 @@ class VoiceRoutingIntegrationTest {
 
         // Act
         val partial = Partial("pause", elapsedMs = 1200, confidence = 0.95f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true)
+        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
         val incomplete = incompletenessDetector.isIncomplete("pause", 1, match?.definition)
 
         // Assert

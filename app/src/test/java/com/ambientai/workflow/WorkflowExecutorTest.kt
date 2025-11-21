@@ -80,7 +80,8 @@ class WorkflowExecutorTest {
             time = time,
             workflowActions = workflowActions,
             ui = ui,
-            mediaHandler = mediaHandler
+            mediaHandler = mediaHandler,
+            browser = mockk(relaxed = true)
         )
     }
 

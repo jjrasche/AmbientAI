@@ -85,7 +85,8 @@ class WorkflowExecutorIntegrationTest {
             time = time,
             workflowActions = workflowActions,
             ui = ui,
-            mediaHandler = mediaHandler
+            mediaHandler = mediaHandler,
+            browser = mockk(relaxed = true)
         )
 
         // Clear repos before each test

@@ -2,6 +2,7 @@ package com.ambientai.testing
 
 import android.content.Context
 import android.util.Log
+import com.ambientai.core.browser.BrowserService
 import com.ambientai.core.media.MediaHandler
 import com.ambientai.core.task.TaskManager
 import com.ambientai.core.time.TimeManager
@@ -34,7 +35,8 @@ class RegressionTestExecutor @Inject constructor(
     private val mediaHandler: MediaHandler,
     private val taskManager: TaskManager,
     private val timeManager: TimeManager,
-    private val playbackStateManager: com.ambientai.core.music.PlaybackStateManager
+    private val playbackStateManager: com.ambientai.core.music.PlaybackStateManager,
+    private val browserService: BrowserService
 ) {
     companion object {
         private const val TAG = "RegressionTest"
@@ -246,6 +248,13 @@ class RegressionTestExecutor @Inject constructor(
                     Log.d(TAG, "  ⏳ wait ${step.wait}ms")
                     delay(step.wait)
                 }
+                step.clearActiveTasks == true -> {
+                    Log.d(TAG, "  🧹 clearing active tasks")
+                    while (true) {
+                        val result = runCatching { taskManager.execute("task.complete", JSONObject()) }.getOrNull()
+                        if (result == null || !result.has("id")) break
+                    }
+                }
                 step.action != null -> {
                     val input = JSONObject(step.input)
                     Log.d(TAG, "  → ${step.action}: ${input.toString().take(50)}")
@@ -265,6 +274,7 @@ class RegressionTestExecutor @Inject constructor(
         action.startsWith("media.") -> mediaHandler.execute(action, input)
         action.startsWith("task.") -> taskManager.execute(action, input)
         action.startsWith("timer.") -> timeManager.execute(action, input)
+        action.startsWith("browser.") -> browserService.execute(action, input)
         else -> JSONObject().apply { put("success", false); put("error", "Unknown action namespace: $action") }
     }
 
