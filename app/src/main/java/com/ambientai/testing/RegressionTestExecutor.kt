@@ -14,12 +14,10 @@ import com.ambientai.core.time.TimeManager
 import com.ambientai.data.entities.Task
 import com.ambientai.data.entities.TaskStatus
 import com.ambientai.data.entities.WorkflowExecution
-import com.ambientai.core.stt.DeepgramSttService
 import com.ambientai.data.repositories.*
 import com.ambientai.workflow.WorkflowRouter
 import com.ambientai.workflow.WorkflowExecutor
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -81,6 +79,9 @@ class RegressionTestExecutor @Inject constructor(
         val failures = mutableListOf<String>()
 
         try {
+            // 0. Cleanup before test to ensure clean state
+            cleanup()
+
             // 1. Capture initial state
             val initialState = captureState()
 
@@ -103,21 +104,12 @@ class RegressionTestExecutor @Inject constructor(
                 )
             }
 
-            Log.d(TAG, "🎤 Transcribing ${audioData.size} bytes from ${scenario.audioFile}")
+            Log.d(TAG, "🎤 Processing ${audioData.size} bytes from ${scenario.audioFile} through VoiceListeningService")
 
-            // Use production DeepgramSttService with callbacks - DRY principle
-            val transcriptDeferred = CompletableDeferred<String?>()
-            val sttService = DeepgramSttService(
-                context = context,
-                onPartialTranscript = { /* ignore partials for test */ },
-                onTranscriptReady = { text -> transcriptDeferred.complete(text) },
-                onRecognitionError = { _ -> transcriptDeferred.complete(null) },
-                audioSaveCallback = { /* ignore audio save for test */ },
-                onRecordingStopped = { /* handled by onTranscriptReady */ }
-            )
-
-            if (!sttService.initialize()) {
-                failures.add("STT initialization failed - missing RECORD_AUDIO permission")
+            // Use VoiceListeningService to process audio through the same pipeline as mic input
+            val voiceService = com.ambientai.core.VoiceListeningService.getInstance()
+            if (voiceService == null) {
+                failures.add("VoiceListeningService not running - cannot execute E2E test")
                 return TestResult(
                     testId = scenario.testId,
                     passed = false,
@@ -126,17 +118,15 @@ class RegressionTestExecutor @Inject constructor(
                 )
             }
 
-            sttService.startFromAudioData(audioData)
-
             val transcriptionText = try {
-                withTimeout(STT_TIMEOUT_MS) { transcriptDeferred.await() }
+                withTimeout(STT_TIMEOUT_MS) { voiceService.startFromAudioData(audioData).await() }
             } catch (e: Exception) {
-                Log.e(TAG, "✖ STT timeout or error", e)
+                Log.e(TAG, "✖ STT/workflow processing timeout or error", e)
                 null
             }
 
             if (transcriptionText == null) {
-                failures.add("STT transcription failed - no result from Deepgram")
+                failures.add("Processing failed - no result from VoiceListeningService")
                 return TestResult(
                     testId = scenario.testId,
                     passed = false,
@@ -153,32 +143,6 @@ class RegressionTestExecutor @Inject constructor(
                 failures.add("STT mismatch: expected \"${scenario.utterance}\" → \"$expectedNormalized\", got \"$transcriptionText\" → \"$actualNormalized\"")
             }
             Log.d(TAG, "📝 Transcription: \"$transcriptionText\" (expected: \"${scenario.utterance}\")")
-
-            // 4. Save a transcript first (workflows expect transcriptId)
-            val transcript = com.ambientai.data.entities.Transcript(
-                text = transcriptionText,
-                audioFilePath = scenario.audioFile,
-                timestamp = System.currentTimeMillis(),
-                excludeFromContext = true  // Don't pollute context with test transcripts
-            )
-            val savedTranscript = transcriptRepo.save(transcript)
-
-            // 5. Execute the test - route and execute workflow(s)
-            val matches = workflowRouter.route(transcriptionText, savedTranscript.id, isPartial = false)
-            if (matches.isNotEmpty()) {
-                Log.d(TAG, "  → Matched ${matches.size} workflow(s): ${matches.map { it.definition.name }}")
-                matches.forEach { match ->
-                    // Check conditions at execution time (same as VoiceListeningService)
-                    if (!workflowRouter.checkConditions(match.definition)) {
-                        Log.d(TAG, "  ⏭ SKIPPING ${match.definition.name}: conditions not met")
-                        return@forEach
-                    }
-                    Log.d(TAG, "  → Executing: ${match.definition.name}")
-                    workflowExecutor.execute(match)
-                }
-            } else {
-                Log.w(TAG, "  → No workflow matched for: $transcriptionText")
-            }
 
             // 6. Wait for workflow completion (polling instead of fixed delay)
             val execution = try {
@@ -546,8 +510,8 @@ class RegressionTestExecutor @Inject constructor(
                 youtubeManager.unsubscribe(sub.id)
             }
 
-            // Note: Database cleanup happens via in-memory ObjectBox (close DB in test teardown)
-            // Service state reset happens via normal service methods (stop, cancel, etc.)
+            // Wait for async operations to complete before next test
+            delay(500)
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }

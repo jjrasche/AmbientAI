@@ -30,9 +30,19 @@ data class TestExpectations(
     val serviceStateChanges: Map<String, Any>? = null,
     val sideEffects: Map<String, Any>? = null,
     val ttsSpoken: String? = null,
+    val ttsContains: String? = null,
     val finalTranscript: String? = null,
     val shouldWaitForMoreSpeech: Boolean? = null,
     val vadTimeout: Int? = null,
+
+    // Streaming execution assertions
+    val streamingExecution: Boolean? = null,
+    val executedOnFinal: Int? = null,
+    val recordingContinued: Boolean? = null,
+    val workflowsMatched: List<String>? = null,
+    val workflowExecutionOrder: List<String>? = null,
+    val conditionsSatisfiedByPreviousWorkflow: Boolean? = null,
+    val ttsSuppressedDuringContinuedSpeech: Boolean? = null,
 
     // Negative assertions (what should NOT happen)
     val shouldNotExecute: List<String>? = null,
