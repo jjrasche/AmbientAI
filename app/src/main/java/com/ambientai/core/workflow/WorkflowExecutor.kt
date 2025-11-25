@@ -9,6 +9,7 @@ import com.ambientai.core.task.TaskManager
 import com.ambientai.core.time.TimeManager
 import com.ambientai.core.tts.TextToSpeechService
 import com.ambientai.core.ui.UiService
+import com.ambientai.core.workflow.SlotFillingService
 import com.ambientai.core.workflow.actions.WorkflowActionHandler
 import com.ambientai.data.entities.WorkflowExecution
 import com.ambientai.data.entities.ActionExecution
@@ -35,7 +36,8 @@ class WorkflowExecutor @Inject constructor(
     private val ui: UiService,
     private val mediaHandler: com.ambientai.core.media.MediaHandler,
     private val browser: BrowserService,
-    private val subscriptionHandler: com.ambientai.core.media.SubscriptionWorkflowHandler
+    private val subscriptionHandler: com.ambientai.core.media.SubscriptionWorkflowHandler,
+    private val slotFilling: SlotFillingService
 ) {
     companion object { private const val TAG = "WorkflowExecutor" }
     private var completionTriggers = mapOf<String, List<Long>>()
@@ -60,7 +62,10 @@ class WorkflowExecutor @Inject constructor(
         val startTime = System.currentTimeMillis()
         val executionLog = executionRepo.save(WorkflowExecution(workflowId = match.definition.id, workflowName = match.definition.name, transcript = match.context.transcript, matchedTrigger = match.context.matchedTrigger, success = false, executionTimeMs = 0, timestamp = startTime))
         runCatching {
-            JSONObject(match.definition.definition).getJSONArray("steps").let { steps -> (0 until steps.length()).forEach { i -> executeStep(steps.getJSONObject(i), match.context, executionLog.id, i, "$i") } }
+            val workflowDef = JSONObject(match.definition.definition)
+            val filledSlots = slotFilling.fillSlots(workflowDef, match.context.transcript)
+            filledSlots.forEach { (key, value) -> match.context.variables[key] = value }
+            workflowDef.getJSONArray("steps").let { steps -> (0 until steps.length()).forEach { i -> executeStep(steps.getJSONObject(i), match.context, executionLog.id, i, "$i") } }
             executionLog.apply { success = true; executionTimeMs = System.currentTimeMillis() - startTime }.also { executionRepo.save(it) }
             Log.d(TAG, "✓ WORKFLOW SUCCESS: ${match.definition.name} (${System.currentTimeMillis() - startTime}ms)")
             triggerCompletionWorkflows(match.definition.name, match.context)

@@ -136,10 +136,10 @@ class WorkflowRouterTest {
         assertEquals("next_track", match.definition.name)
     }
 
-    // ===== QUERY CLEANING =====
+    // ===== TRANSCRIPT HANDLING (now delegates to slot filling) =====
 
     @Test
-    fun `cleans trigger words from query - play`() {
+    fun `preserves full transcript for slot filling`() {
         // Arrange
         workflowRepo.save(WorkflowDefinition(
             name = "play_music",
@@ -151,13 +151,13 @@ class WorkflowRouterTest {
         // Act
         val match = router.route("play taylor swift", transcriptId = 1L).firstOrNull()
 
-        // Assert
+        // Assert - router preserves full transcript; slot filling extracts values
         assertNotNull(match)
-        assertEquals("taylor swift", match.context.variables["transcript"])
+        assertEquals("play taylor swift", match.context.variables["transcript"])
     }
 
     @Test
-    fun `cleans trigger words from query - music`() {
+    fun `preserves full transcript in context variables`() {
         // Arrange
         workflowRepo.save(WorkflowDefinition(
             name = "play_music",
@@ -169,13 +169,13 @@ class WorkflowRouterTest {
         // Act
         val match = router.route("play music by radiohead", transcriptId = 1L).firstOrNull()
 
-        // Assert
+        // Assert - router now preserves full segment (slot filling handles extraction)
         assertNotNull(match)
-        assertEquals("by radiohead", match.context.variables["transcript"])
+        assertEquals("play music by radiohead", match.context.variables["transcript"])
     }
 
     @Test
-    fun `cleans multiple trigger words`() {
+    fun `preserves full segment for multi-word trigger`() {
         // Arrange
         workflowRepo.save(WorkflowDefinition(
             name = "play_music",
@@ -187,17 +187,16 @@ class WorkflowRouterTest {
         // Act
         val match = router.route("play song the scientist", transcriptId = 1L).firstOrNull()
 
-        // Assert
+        // Assert - router now preserves full segment (slot filling handles extraction)
         assertNotNull(match)
-        val cleaned = match.context.variables["transcript"] as String
-        // Should remove "play" and "song"
-        assertEquals("the scientist", cleaned.trim())
+        val transcript = match.context.variables["transcript"] as String
+        assertEquals("play song the scientist", transcript.trim())
     }
 
     // ===== NO MATCH SCENARIOS =====
 
     @Test
-    fun `creates conversational default when no workflows match`() {
+    fun `returns empty list when no workflows match`() {
         // Arrange
         workflowRepo.save(WorkflowDefinition(
             name = "pause_music",
@@ -206,13 +205,11 @@ class WorkflowRouterTest {
         ))
         router.loadWorkflows()
 
-        // Act
-        val match = router.route("what is the weather today", transcriptId = 1L).firstOrNull()
+        // Act - router now returns empty list for no matches (caller handles default behavior)
+        val matches = router.route("what is the weather today", transcriptId = 1L)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
-        assertEquals("(default)", match.context.matchedTrigger)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     @Test
@@ -255,7 +252,7 @@ class WorkflowRouterTest {
     }
 
     @Test
-    fun `falls back to conversational default when LLM fails`() = runTest {
+    fun `returns empty list when LLM fails`() = runTest {
         // Arrange
         workflowRepo.save(WorkflowDefinition(
             name = "pause_music",
@@ -270,16 +267,15 @@ class WorkflowRouterTest {
             put("error", "LLM error")
         }
 
-        // Act
-        val match = router.route("quit", transcriptId = 1L, isPartial = false).firstOrNull()
+        // Act - router returns empty list when LLM fails (caller handles default)
+        val matches = router.route("quit", transcriptId = 1L, isPartial = false)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     @Test
-    fun `falls back to conversational default when LLM returns unknown workflow`() = runTest {
+    fun `returns empty list when LLM returns unknown workflow`() = runTest {
         // Arrange
         workflowRepo.save(WorkflowDefinition(
             name = "pause_music",
@@ -294,12 +290,11 @@ class WorkflowRouterTest {
             put("response", "nonexistent_workflow")
         }
 
-        // Act
-        val match = router.route("stop", transcriptId = 1L, isPartial = false).firstOrNull()
+        // Act - router returns empty list when LLM returns unknown workflow
+        val matches = router.route("stop", transcriptId = 1L, isPartial = false)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     @Test
@@ -312,12 +307,11 @@ class WorkflowRouterTest {
         ))
         router.loadWorkflows()
 
-        // Act - short transcript but marked as partial
-        val match = router.route("stop", transcriptId = 1L, isPartial = true).firstOrNull()
+        // Act - short transcript but marked as partial, returns empty (no LLM attempt)
+        val matches = router.route("stop", transcriptId = 1L, isPartial = true)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     @Test
@@ -330,12 +324,11 @@ class WorkflowRouterTest {
         ))
         router.loadWorkflows()
 
-        // Act - long transcript (> 10 words)
-        val match = router.route("this is a very long utterance with many words that exceeds threshold", transcriptId = 1L, isPartial = false).firstOrNull()
+        // Act - long transcript (> 10 words), returns empty (no LLM attempt)
+        val matches = router.route("this is a very long utterance with many words that exceeds threshold", transcriptId = 1L, isPartial = false)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     // ===== DISABLED WORKFLOWS =====
@@ -356,11 +349,10 @@ class WorkflowRouterTest {
         router.loadWorkflows()
 
         // Act - Try to trigger the disabled workflow
-        val match = router.route("pause", transcriptId = 1L).firstOrNull()
+        val matches = router.route("pause", transcriptId = 1L)
 
-        // Assert - Should fall back to conversational default since "pause" workflow is disabled
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        // Assert - Should return empty since "pause" workflow is disabled
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     // ===== MULTIPLE WORKFLOWS =====
@@ -440,12 +432,11 @@ class WorkflowRouterTest {
         ))
         router.loadWorkflows()
 
-        // Act
-        val match = router.route("", transcriptId = 1L).firstOrNull()
+        // Act - empty transcript returns empty list
+        val matches = router.route("", transcriptId = 1L)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     @Test
@@ -458,12 +449,11 @@ class WorkflowRouterTest {
         ))
         router.loadWorkflows()
 
-        // Act
-        val match = router.route("   ", transcriptId = 1L).firstOrNull()
+        // Act - whitespace-only returns empty list
+        val matches = router.route("   ", transcriptId = 1L)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     @Test
@@ -499,12 +489,11 @@ class WorkflowRouterTest {
         ))
         router.loadWorkflows()
 
-        // Act
-        val match = router.route("test", transcriptId = 1L).firstOrNull()
+        // Act - workflow with empty triggers doesn't match anything
+        val matches = router.route("test", transcriptId = 1L)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
     @Test
@@ -517,17 +506,13 @@ class WorkflowRouterTest {
         ))
         router.loadWorkflows()
 
-        // Act
-        val match = router.route("test", transcriptId = 1L).firstOrNull()
+        // Act - workflow with null triggers doesn't match anything
+        val matches = router.route("test", transcriptId = 1L)
 
         // Assert
-        assertNotNull(match)
-        assertEquals("conversational_default", match.definition.name)
+        assertEquals(emptyList<WorkflowMatch>(), matches)
     }
 
-    // Tests for conversational default structure deleted - they were testing implementation
-    // details (JSON structure) rather than behavior. The behavior is already tested by:
-    // - "creates conversational default when no workflows match"
-    // - "falls back to conversational default when LLM fails"
-    // - "falls back to conversational default when LLM returns unknown workflow"
+    // Note: Router no longer creates conversational_default - returns empty list instead.
+    // Caller (VoiceListeningService) handles default behavior when no matches found.
 }

@@ -56,14 +56,14 @@ class WorkflowRouter @Inject constructor(
             }
         }
 
-        // If no matches, try LLM extraction or conversational default
+        // If no matches, try LLM extraction for short transcripts
         if (allMatches.isEmpty()) {
             Log.d(TAG, "   ↳ No trigger matches found")
             return if (wordCount < SHORT_TRANSCRIPT_THRESHOLD && !isPartial) {
                 Log.d(TAG, "🧠 SHORT TRANSCRIPT ($wordCount words) - attempting LLM intent extraction")
-                extractIntentWithLlm(transcript, transcriptId)?.let { listOf(it) } ?: listOf(createConversationalDefault(transcript, transcriptId))
+                extractIntentWithLlm(transcript, transcriptId)?.let { listOf(it) } ?: emptyList()
             } else {
-                listOf(createConversationalDefault(transcript, transcriptId))
+                emptyList()
             }
         }
 
@@ -97,7 +97,7 @@ class WorkflowRouter @Inject constructor(
             val segment = transcript.substring(segmentStart, segmentEnd).trim()
                 .replace(Regex("\\b(no wait|wait no|actually|never mind)\\b", RegexOption.IGNORE_CASE), "")
                 .trim()
-            createWorkflowMatch(WorkflowMatchCandidate(match.workflow, match.trigger, match.length), segment, transcriptId)
+            createWorkflowMatch(WorkflowMatchCandidate(match.workflow, match.trigger, match.length), segment, transcriptId, match.position, match.position + match.length)
         }
     }
     private fun extractIntentWithLlm(transcript: String, transcriptId: Long): WorkflowMatch? {
@@ -119,19 +119,18 @@ class WorkflowRouter @Inject constructor(
                         createWorkflowMatch(WorkflowMatchCandidate(workflow, "(LLM extracted)", 0), transcript, transcriptId)
                     } ?: run {
                         Log.w(TAG, "⚠ LLM returned unknown workflow: $extractedWorkflow")
-                        createConversationalDefault(transcript, transcriptId)
+                        null
                     }
                 } else {
                     Log.e(TAG, "✖ LLM INTENT EXTRACTION FAILED: ${result.optString("error")}")
-                    createConversationalDefault(transcript, transcriptId)
+                    null
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "✖ LLM INTENT EXTRACTION ERROR: ${e.message}")
-                createConversationalDefault(transcript, transcriptId)
+                null
             }
         }
     }
-    private fun createConversationalDefault(transcript: String, transcriptId: Long) = WorkflowDefinition(id = -1, name = "conversational_default", enabled = true, definition = """{"triggers":{"keywords":[]},"steps":[{"action":"llm.prompt","input":{"systemPrompt":"You are a helpful voice assistant. Provide brief, conversational responses.","userPrompt":"$transcript","temperature":0.7,"maxTokens":50},"output":"response"},{"action":"tts.speak","input":{"text":"${'$'}response.response"}}]}""").let { defaultWorkflow -> WorkflowExecutionContext(workflowId = -1, workflowName = "conversational_default", transcript = transcript, matchedTrigger = "(default)").apply { variables["transcript"] = transcript; variables["transcriptId"] = transcriptId }.let { context -> WorkflowMatch(defaultWorkflow, context) } }
     private fun findMatchingTrigger(workflow: WorkflowDefinition, lowerTranscript: String): String? = parseTriggers(workflow.definition).firstOrNull { trigger -> lowerTranscript.contains(trigger.lowercase()) }
     private fun parseTriggers(workflowJson: String) = runCatching { JSONObject(workflowJson).let { json -> json.optJSONObject("triggers")?.let { triggersObj -> triggersObj.optJSONArray("keywords")?.let { keywordsArray -> List(keywordsArray.length()) { i -> keywordsArray.getString(i) } } ?: emptyList() } ?: json.optJSONArray("triggers")?.let { triggersArray -> List(triggersArray.length()) { i -> triggersArray.getString(i) } } ?: emptyList() } }.getOrElse { emptyList() }
     fun checkConditions(workflow: WorkflowDefinition): Boolean = runCatching {
@@ -155,11 +154,7 @@ class WorkflowRouter @Inject constructor(
         Log.e(TAG, "   ↳ Error checking conditions: ${e.message}")
         true
     }
-    private fun createWorkflowMatch(candidate: WorkflowMatchCandidate, transcript: String, transcriptId: Long): WorkflowMatch {
-        val cleanedTranscript = transcript.replace(Regex("\\b(play|music|song|track)\\b", RegexOption.IGNORE_CASE), "").trim()
-        Log.d(TAG, "   ↳ QUERY CLEANING: \"$transcript\" → \"$cleanedTranscript\"")
-        return WorkflowExecutionContext(workflowId = candidate.definition.id, workflowName = candidate.definition.name, transcript = transcript, matchedTrigger = candidate.matchedTrigger).apply { variables["transcript"] = cleanedTranscript; variables["transcriptId"] = transcriptId }.let { context -> WorkflowMatch(definition = candidate.definition, context = context) }
-    }
+    private fun createWorkflowMatch(candidate: WorkflowMatchCandidate, transcript: String, transcriptId: Long, triggerStart: Int = 0, triggerEnd: Int = 0): WorkflowMatch = WorkflowExecutionContext(workflowId = candidate.definition.id, workflowName = candidate.definition.name, transcript = transcript, matchedTrigger = candidate.matchedTrigger).apply { variables["transcript"] = transcript; variables["transcriptId"] = transcriptId }.let { context -> WorkflowMatch(definition = candidate.definition, context = context, triggerStart = triggerStart, triggerEnd = triggerEnd) }
     private data class WorkflowMatchCandidate(val definition: WorkflowDefinition, val matchedTrigger: String, val matchLength: Int)
 }
 class MultipleMatchException(val transcript: String, val matchedWorkflows: List<String>) : Exception("Multiple workflows matched: ${matchedWorkflows.joinToString(", ")}")

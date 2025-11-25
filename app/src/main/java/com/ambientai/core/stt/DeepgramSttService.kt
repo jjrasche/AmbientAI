@@ -31,6 +31,14 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
     private var audioFilePath: String? = null
     private var recordingStartTime = 0L
 
+    // Streaming execution support
+    var onFinalChunk: ((chunk: String, timestamp: Long) -> Unit)? = null
+    @Volatile private var currentAmplitude = 0
+    private var webSocketReady: CompletableDeferred<Boolean>? = null
+    private var transcriptComplete: CompletableDeferred<Unit>? = null
+
+    fun getCurrentAmplitude(): Int = currentAmplitude
+
     companion object {
         private const val TAG = "DeepgramSTT"
         private const val SAMPLE_RATE = 16000
@@ -63,7 +71,10 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
      * Uses exact same production code path - just different audio source.
      */
     fun startFromAudioData(audioData: ByteArray) {
-        if (isRecording) { Log.w(TAG, "⚠ STT START IGNORED (already recording)"); return }
+        if (isRecording) {
+            Log.w(TAG, "⚠ STT already recording, stopping for test audio")
+            stop()
+        }
         recordingStartTime = System.currentTimeMillis()
         // Skip WAV header (44 bytes) to get raw PCM data
         val pcmData = if (audioData.size > 44) audioData.copyOfRange(44, audioData.size) else audioData
@@ -74,12 +85,25 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         lastSpeechTime = System.currentTimeMillis()
         audioFilePath = null // No file to save for test audio
         isRecording = true
+        transcriptComplete = CompletableDeferred()
         startWebSocket()
         startAudioFromData(pcmData)
-        // No VAD timeout for file playback - we control when it ends
+        // No VAD timeout for file playback - we wait for speech_final
     }
     private fun startAudioFromData(pcmData: ByteArray) {
         recordingJob = CoroutineScope(Dispatchers.IO).launch {
+            // Wait for WebSocket to connect
+            val connected = try {
+                withTimeout(5000) { webSocketReady?.await() ?: false }
+            } catch (e: Exception) {
+                Log.e(TAG, "✖ WebSocket connection timeout")
+                false
+            }
+            if (!connected) {
+                stop()
+                return@launch
+            }
+            Log.d(TAG, "🔌 WebSocket ready, sending audio...")
             val chunkSize = 3200 // 100ms of 16kHz 16-bit mono audio
             var offset = 0
             while (offset < pcmData.size && isRecording && isActive) {
@@ -90,8 +114,17 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
                 offset = end
                 delay(100) // Real-time streaming: 100ms chunk = 100ms delay
             }
-            // Audio complete - wait for final results then stop
-            delay(1000)
+            // Audio complete - give Deepgram time to process final chunk
+            Log.d(TAG, "✓ Audio sending complete (${pcmData.size} bytes), waiting for speech_final...")
+            // Wait for speech_final from Deepgram (with timeout)
+            val deferred = transcriptComplete
+            if (deferred != null) {
+                try {
+                    withTimeout(10000) { deferred.await() }
+                } catch (e: Exception) {
+                    Log.w(TAG, "⚠ Timeout waiting for speech_final, stopping anyway")
+                }
+            }
             stop()
         }
     }
@@ -102,6 +135,8 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         Log.d(TAG, "■ DEEPGRAM STOPPED (manual) [${elapsed}ms]")
         Log.d(TAG, "   ↳ Transcript buffer: \"$text\"")
         isRecording = false
+        webSocketReady = null
+        transcriptComplete = null
         vadTimeoutJob?.cancel()
         recordingJob?.cancel()
         audioRecord?.stop()
@@ -124,8 +159,9 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         val apiKey = BuildConfig.DEEPGRAM_API_KEY
         if (apiKey.isBlank()) { Log.e(TAG, "✖ DEEPGRAM API KEY NOT SET"); onRecognitionError(ERROR_WEBSOCKET); return }
         val request = Request.Builder().url("$DEEPGRAM_URL?model=nova-2-conversationalai&encoding=linear16&sample_rate=$SAMPLE_RATE&channels=1&interim_results=true&vad_events=true&smart_format=true").addHeader("Authorization", "Token $apiKey").build()
+        webSocketReady = CompletableDeferred()
         webSocket = OkHttpClient().newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) { Log.d(TAG, "🔌 WebSocket CONNECTED") }
+            override fun onOpen(webSocket: WebSocket, response: Response) { Log.d(TAG, "🔌 WebSocket CONNECTED"); webSocketReady?.complete(true) }
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
@@ -139,6 +175,10 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
                             val speechFinal = json.optBoolean("speech_final", false)
                             val elapsed = System.currentTimeMillis() - recordingStartTime
                             Log.d(TAG, "   ↳ is_final=$isFinal, speech_final=$speechFinal")
+                            // Complete transcript when we get speech_final (end of utterance)
+                            if (speechFinal) {
+                                transcriptComplete?.complete(Unit)
+                            }
                             if (transcript.isNotBlank()) {
                                 lastSpeechTime = System.currentTimeMillis()
                                 val fullText = currentTranscript.toString() + transcript
@@ -148,6 +188,8 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
                                     lastPartialTranscript = ""
                                     Log.d(TAG, "✅ DEEPGRAM FINAL CHUNK [${elapsed}ms, $wordCount words total]: \"$transcript\"")
                                     Log.d(TAG, "   ↳ Current full transcript: \"${currentTranscript.toString().trim()}\"")
+                                    // Emit for streaming execution
+                                    onFinalChunk?.invoke(transcript, System.currentTimeMillis())
                                 } else {
                                     lastPartialTranscript = transcript
                                     Log.d(TAG, "⏳ DEEPGRAM PARTIAL [${elapsed}ms, $wordCount words]: \"$transcript\"")
@@ -169,7 +211,7 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
                     }
                 } catch (e: Exception) { Log.e(TAG, "✖ JSON PARSE ERROR: ${e.message}") }
             }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "✖ WebSocket ERROR: ${t.message}"); isRecording = false; onRecognitionError(ERROR_WEBSOCKET) }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "✖ WebSocket ERROR: ${t.message}"); webSocketReady?.complete(false); isRecording = false; onRecognitionError(ERROR_WEBSOCKET) }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { Log.d(TAG, "🔌 WebSocket CLOSED: $reason") }
         })
     }
@@ -187,6 +229,16 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
                     val audioData = buffer.copyOf(read)
                     audioBuffer.add(audioData)
                     webSocket?.send(okio.ByteString.of(*audioData))
+                    // Update amplitude for barge-in detection
+                    var maxAmplitude = 0
+                    for (i in 0 until read step 2) {
+                        if (i + 1 < read) {
+                            val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+                            val amplitude = kotlin.math.abs(sample.toShort().toInt())
+                            if (amplitude > maxAmplitude) maxAmplitude = amplitude
+                        }
+                    }
+                    currentAmplitude = maxAmplitude
                 }
             }
         }

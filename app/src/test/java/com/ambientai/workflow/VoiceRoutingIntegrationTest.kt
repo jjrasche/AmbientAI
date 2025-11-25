@@ -342,18 +342,18 @@ class VoiceRoutingIntegrationTest {
 
         // Act - Utterance doesn't match any workflow
         val partial = Partial("unknown command for", elapsedMs = 3000, confidence = 0.85f)
-        val match = router.route(partial.text, transcriptId = 1L, isPartial = true).firstOrNull()
+        val matches = router.route(partial.text, transcriptId = 1L, isPartial = true)
         val wordCount = partial.text.split("\\s+".toRegex()).size
         val isIncomplete = incompletenessDetector.isIncomplete(
             partial.text,
             wordCount,
-            match?.definition
+            matches.firstOrNull()?.definition
         )
 
         // Assert
         assertTrue(isIncomplete, "Should detect trailing 'for' even without workflow match")
-        assertNotNull(match)
-        assertEquals("conversational_default", match!!.definition.name)
+        // Router now returns empty list for no matches; caller handles default behavior
+        assertTrue(matches.isEmpty(), "Should return empty list when no workflow matches")
     }
 
     // ===== PARTIAL VS FINAL DISTINCTION =====

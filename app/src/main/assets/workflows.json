@@ -5,19 +5,17 @@
       "enabled": true,
       "definition": {
         "triggers": ["start task", "working on", "begin task", "start a"],
+        "slots": {
+          "taskName": {
+            "description": "Name or description of the task. Examples: 'coding', 'report', 'review PRs'",
+            "required": true
+          }
+        },
         "requiresInput": true,
         "steps": [
           {
-            "action": "llm.prompt",
-            "input": {
-              "systemPrompt": "Extract task name from user input. Return only the task name, nothing else.",
-              "userPrompt": "$transcript"
-            },
-            "output": "taskName"
-          },
-          {
             "action": "task.start",
-            "input": {"name": "$taskName.response"},
+            "input": {"name": "$taskName"},
             "output": "task"
           },
           {
@@ -87,7 +85,7 @@
               {
                 "action": "llm.prompt",
                 "input": {
-                  "systemPrompt": "Extract task name from user input. Return only the task name, nothing else.",
+                  "systemPrompt": "Extract the task name/description from the user's command. Return ONLY the task name, nothing else. Examples: 'start a coding task' → 'coding', 'begin working on the report' → 'report', 'start task review PRs' → 'review PRs'",
                   "userPrompt": "$transcript"
                 },
                 "output": "taskName"
@@ -118,7 +116,7 @@
                   {
                     "action": "llm.prompt",
                     "input": {
-                      "systemPrompt": "Extract task name from user input. Return only the task name, nothing else.",
+                      "systemPrompt": "Extract the task name/description from the user's command. Return ONLY the task name, nothing else. Examples: 'start a coding task' → 'coding', 'begin working on the report' → 'report', 'start task review PRs' → 'review PRs'",
                       "userPrompt": "$transcript"
                     },
                     "output": "taskName"
@@ -275,14 +273,21 @@
         "triggers": {
           "keywords": ["play some music", "play music", "play song", "listen to", "play artist", "play album", "shuffle", "put on some", "play a youtube video", "play youtube video", "play video about", "play a video about", "play youtube"]
         },
+        "slots": {
+          "query": {
+            "description": "Specific song, artist, or album to play. Return null if user wants random/shuffle music without specifying what. Examples: 'play Taylor Swift' → 'Taylor Swift', 'play some music' → null, 'shuffle' → null",
+            "required": false,
+            "default": "random"
+          }
+        },
         "requiresInput": true,
         "steps": [
-          {"action": "media.play", "input": {"query": "$transcript"}, "output": "musicResult"},
+          {"action": "media.play", "input": {"query": "$query"}, "output": "musicResult"},
           {
             "action": "control.if",
             "condition": "$musicResult.success === false",
             "then": [
-              {"action": "media.searchAndSelect", "input": {"query": "$transcript", "max_results": 5}, "output": "selected"},
+              {"action": "media.searchAndSelect", "input": {"query": "$query", "max_results": 5}, "output": "selected"},
               {
                 "action": "control.if",
                 "condition": "$selected.success === true",
@@ -320,20 +325,6 @@
         "steps": [
           {"action": "media.pause", "output": "result"},
           {"action": "tts.speak", "input": {"text": "Music paused"}}
-        ]
-      }
-    },
-    {
-      "name": "resume_music",
-      "enabled": true,
-      "definition": {
-        "triggers": {
-          "keywords": ["resume", "resume music", "continue", "keep playing"],
-          "conditions": {"playbackActive": false}
-        },
-        "steps": [
-          {"action": "media.resume", "output": "result"},
-          {"action": "tts.speak", "input": {"text": "Resuming music"}}
         ]
       }
     },
