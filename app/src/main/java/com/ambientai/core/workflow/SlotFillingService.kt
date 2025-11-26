@@ -46,8 +46,9 @@ Rules:
         })
 
         if (!result.optBoolean("success", false)) {
-            Log.e(TAG, "Slot extraction failed: ${result.optString("error")}")
-            return applyDefaults(slots)
+            val error = result.optString("error", "Unknown error")
+            Log.e(TAG, "Slot extraction failed: $error")
+            throw SlotExtractionException("Failed to extract slots: $error")
         }
 
         val response = result.optString("response", "{}")
@@ -61,28 +62,24 @@ Rules:
             .removePrefix("```json").removePrefix("```")
             .removeSuffix("```").trim()
 
-        return runCatching {
-            val parsed = JSONObject(cleaned)
-            val result = mutableMapOf<String, Any>()
-
-            slots.keys().forEach { key ->
-                val slot = slots.getJSONObject(key)
-                val value = parsed.opt(key)
-                if (value != null && value != JSONObject.NULL) {
-                    result[key] = value
-                } else {
-                    slot.opt("default")?.let { result[key] = it }
-                }
-            }
-            Log.d(TAG, "Extracted slots: $result")
-            result
-        }.getOrElse { e ->
+        val parsed = runCatching { JSONObject(cleaned) }.getOrElse { e ->
             Log.e(TAG, "Failed to parse slot values: ${e.message}, response: $cleaned")
-            applyDefaults(slots)
+            throw SlotExtractionException("Failed to parse LLM response as JSON: $cleaned")
         }
+        val result = mutableMapOf<String, Any>()
+        slots.keys().forEach { key ->
+            val slot = slots.getJSONObject(key)
+            val value = parsed.opt(key)
+            val required = slot.optBoolean("required", true)
+            when {
+                value != null && value != JSONObject.NULL -> result[key] = value
+                !required -> slot.opt("default")?.let { result[key] = it }
+                else -> throw SlotExtractionException("Required slot '$key' not found in LLM response")
+            }
+        }
+        Log.d(TAG, "Extracted slots: $result")
+        return result
     }
 
-    private fun applyDefaults(slots: JSONObject): Map<String, Any> = mutableMapOf<String, Any>().also { result ->
-        slots.keys().forEach { key -> slots.getJSONObject(key).opt("default")?.let { result[key] = it } }
-    }
+    class SlotExtractionException(message: String) : Exception(message)
 }

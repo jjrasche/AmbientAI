@@ -21,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.ambientai.core.InteractionTracker
 import com.ambientai.core.VoiceListeningService
 import com.ambientai.core.ui.UiService
 import com.ambientai.data.entities.Transcript
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var logEntryRepository: ILogEntryRepository
     @Inject lateinit var workflowReviewService: com.ambientai.core.workflow.WorkflowReviewService
     @Inject lateinit var uiService: UiService
+    @Inject lateinit var interactionTracker: InteractionTracker
     private var voiceService: VoiceListeningService? = null
     private var isBound = false
     private var currentScreen by mutableStateOf<Screen>(Screen.Timeline)
@@ -78,11 +80,13 @@ class MainActivity : ComponentActivity() {
         checkAlarmPermission()
         setContent {
             val modalData by uiService.modalState.collectAsState()
+            val currentInteraction by interactionTracker.currentState.collectAsState()
+            val recentInteractions by interactionTracker.recentInteractions.collectAsState()
             AmbientAITheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     when (currentScreen) {
-                        Screen.Timeline -> TimelineScreen(currentTranscript, transcriptRepository, actionExecutionRepository,
-                            onNavigateToDb = { currentScreen = Screen.Database }, onToggleExcludeFromContext = ::toggleExcludeFromContext)
+                        Screen.Timeline -> TimelineScreen(currentInteraction, recentInteractions,
+                            onNavigateToDb = { currentScreen = Screen.Database })
                         Screen.Database -> DatabaseScreen(transcriptRepository, actionExecutionRepository, workflowDefinitionRepository,
                             taskRepository, workflowExecutionRepository, logEntryRepository, onBack = { currentScreen = Screen.Timeline }, onNavigateToReview = { currentScreen = Screen.WorkflowReview }, onWorkflowQuickStart = ::handleWorkflowQuickStart, onWorkflowsRefresh = ::refreshWorkflows)
                         Screen.WorkflowReview -> WorkflowReviewScreen(workflowDefinitionRepository, workflowExecutionRepository, actionExecutionRepository, workflowReviewService, onBack = { currentScreen = Screen.Database })

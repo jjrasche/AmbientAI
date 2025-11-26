@@ -82,6 +82,15 @@ class RegressionTestExecutor @Inject constructor(
             // 0. Cleanup before test to ensure clean state
             cleanup()
 
+            // 0.5. Reset VoiceListeningService state for test isolation
+            val voiceService = com.ambientai.core.VoiceListeningService.getInstance()
+            voiceService?.resetForTest()
+
+            if (voiceService == null) {
+                failures.add("VoiceListeningService not running - cannot execute E2E test")
+                return TestResult(testId = scenario.testId, passed = false, durationMs = System.currentTimeMillis() - testStartTime, failures = failures)
+            }
+
             // 1. Capture initial state
             val initialState = captureState()
 
@@ -105,18 +114,6 @@ class RegressionTestExecutor @Inject constructor(
             }
 
             Log.d(TAG, "🎤 Processing ${audioData.size} bytes from ${scenario.audioFile} through VoiceListeningService")
-
-            // Use VoiceListeningService to process audio through the same pipeline as mic input
-            val voiceService = com.ambientai.core.VoiceListeningService.getInstance()
-            if (voiceService == null) {
-                failures.add("VoiceListeningService not running - cannot execute E2E test")
-                return TestResult(
-                    testId = scenario.testId,
-                    passed = false,
-                    durationMs = System.currentTimeMillis() - testStartTime,
-                    failures = failures
-                )
-            }
 
             val transcriptionText = try {
                 withTimeout(STT_TIMEOUT_MS) { voiceService.startFromAudioData(audioData).await() }
@@ -494,6 +491,9 @@ class RegressionTestExecutor @Inject constructor(
         Log.d(TAG, "🧹 Cleaning up test state...")
 
         try {
+            // Stop any ongoing TTS from previous test
+            ttsService.stop()
+
             // Stop music if playing
             mediaHandler.execute("media.stop", JSONObject())
 

@@ -26,6 +26,7 @@ import com.ambientai.data.entities.GoldenDataset
 import com.ambientai.data.entities.Transcript
 import com.ambientai.data.repositories.IGoldenDatasetRepository
 import com.ambientai.data.repositories.ITranscriptRepository
+import com.ambientai.core.workflow.IncompletenessDetector
 import com.ambientai.workflow.MultipleMatchException
 import com.ambientai.workflow.WorkflowExecutor
 import com.ambientai.workflow.WorkflowMatch
@@ -49,6 +50,7 @@ class VoiceListeningService : Service() {
     @Inject lateinit var workflowSeeder: com.ambientai.data.WorkflowSeeder
     @Inject lateinit var mediaIntelligence: com.ambientai.core.media.MediaIntelligenceManager
     @Inject lateinit var ttsService: TextToSpeechService
+    @Inject lateinit var interactionTracker: InteractionTracker
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val binder = LocalBinder()
     private val listeners = mutableSetOf<TranscriptUpdateListener>()
@@ -58,14 +60,7 @@ class VoiceListeningService : Service() {
     private var lastPartialTranscript = ""
     private var workflowTriggeredDuringRecording = false
     private var recordingStartTime: Long = 0
-
-    // Streaming execution state
-    private var accumulatedTranscript = StringBuilder()
-    private var pauseDetectionJob: Job? = null
-    private var consumedTriggerEnd = 0
-    private var streamingMode = false
-    private val executedWorkflowVariables = mutableMapOf<String, Any>()
-    private var currentTranscriptId: Long = -1
+    private var firstPartialReceived = false
 
     companion object {
         private const val TAG = "VoiceService"
@@ -146,7 +141,6 @@ class VoiceListeningService : Service() {
             if (!ttsService.initialize()) return@launch
             deepgramStt = DeepgramSttService(applicationContext, ::handlePartialTranscript, ::handleTranscript, ::handleSttError, ::handleAudioSaved, ::handleRecordingStopped)
             if (!deepgramStt!!.initialize()) { Log.e(TAG, "✖ DEEPGRAM STT INIT FAILED"); return@launch }
-            deepgramStt?.onFinalChunk = { chunk, timestamp -> handleFinalChunk(chunk, timestamp) }
             mediaIntelligence.initialize()
             Log.d(TAG, "🔄 RESEEDING WORKFLOWS FROM CODE")
             workflowSeeder.reseedAll()
@@ -160,18 +154,13 @@ class VoiceListeningService : Service() {
     }
     private fun startListening() {
         recordingStartTime = System.currentTimeMillis()
+        interactionTracker.startRecording()
         Log.d(TAG, "🎤 RECORDING STARTED at ${recordingStartTime}")
         checkAndPauseMusic()
         if (isTtsSpeaking) { Log.d(TAG, "⏹ Interrupting TTS"); ttsService.stop(); isTtsSpeaking = false }
         lastPartialTranscript = ""
         workflowTriggeredDuringRecording = false
-        // Reset streaming execution state
-        accumulatedTranscript.clear()
-        pauseDetectionJob?.cancel()
-        consumedTriggerEnd = 0
-        streamingMode = false
-        executedWorkflowVariables.clear()
-        currentTranscriptId = -1
+        firstPartialReceived = false
         updateNotification("Listening...")
         audioFeedback?.playStartTone()
         serviceScope.launch { deepgramStt?.start() }
@@ -184,20 +173,29 @@ class VoiceListeningService : Service() {
      */
     fun startFromAudioData(audioData: ByteArray): Deferred<String?> {
         val result = CompletableDeferred<String?>()
-        recordingStartTime = System.currentTimeMillis()
-        Log.d(TAG, "🎤 TEST RECORDING STARTED at ${recordingStartTime} (${audioData.size} bytes)")
 
-        // Reset streaming execution state (same as startListening)
+        // Cancel any pending completion from previous test (critical for test isolation)
+        testCompletionDeferred?.let { prev ->
+            if (!prev.isCompleted) {
+                Log.w(TAG, "⚠ Cancelling previous test deferred (was not completed)")
+                prev.complete(null)
+            }
+        }
+
+        // Generate new session ID to ensure old coroutines don't complete new deferred
+        val sessionId = System.currentTimeMillis()
+        testSessionId = sessionId
+        deferredSessionId = sessionId  // Track which session this deferred belongs to
+
+        recordingStartTime = sessionId
+        Log.d(TAG, "🎤 TEST RECORDING STARTED session=$sessionId (${audioData.size} bytes)")
+
+        // Reset state (same as startListening)
         lastPartialTranscript = ""
         workflowTriggeredDuringRecording = false
-        accumulatedTranscript.clear()
-        pauseDetectionJob?.cancel()
-        consumedTriggerEnd = 0
-        streamingMode = false
-        executedWorkflowVariables.clear()
-        currentTranscriptId = -1
+        firstPartialReceived = false
 
-        // Store completion callback
+        // Store completion callback with session ID
         testCompletionDeferred = result
 
         // Start audio processing through Deepgram
@@ -206,7 +204,59 @@ class VoiceListeningService : Service() {
         return result
     }
 
+    /**
+     * Reset service state for test isolation.
+     * Waits for any pending operations to complete.
+     */
+    suspend fun resetForTest() {
+        Log.d(TAG, "🧹 RESETTING SERVICE FOR TEST")
+
+        // Stop any in-progress recording
+        if (deepgramStt?.isRecording() == true) {
+            Log.d(TAG, "   ↳ Stopping active recording")
+            deepgramStt?.stop()
+            delay(500) // Allow callbacks and workflow to complete
+        }
+
+        // Wait for any pending workflow to complete (with timeout)
+        testCompletionDeferred?.let { prev ->
+            if (!prev.isCompleted) {
+                Log.d(TAG, "   ↳ Waiting for pending workflow to complete...")
+                try {
+                    withTimeout(5000) { prev.await() }
+                } catch (e: Exception) {
+                    Log.w(TAG, "   ↳ Timeout waiting for workflow, forcing completion")
+                    prev.complete(null)
+                }
+            }
+        }
+        testCompletionDeferred = null
+        testSessionId = 0
+
+        // Reset all state
+        lastPartialTranscript = ""
+        workflowTriggeredDuringRecording = false
+        firstPartialReceived = false
+
+        Log.d(TAG, "   ↳ Reset complete")
+    }
+
     private var testCompletionDeferred: CompletableDeferred<String?>? = null
+    @Volatile private var testSessionId: Long = 0
+    @Volatile private var deferredSessionId: Long = 0  // Session ID when deferred was created
+
+    /** Complete test deferred only if session matches (prevents race conditions) */
+    private fun completeTestDeferred(text: String?) {
+        val currentSession = testSessionId
+        val deferredSession = deferredSessionId
+        if (currentSession == deferredSession && currentSession != 0L) {
+            Log.d(TAG, "✓ Completing test deferred for session $currentSession")
+            testCompletionDeferred?.complete(text)
+            testCompletionDeferred = null
+        } else {
+            Log.w(TAG, "⚠ Ignoring stale completion (deferred session $deferredSession != current $currentSession)")
+        }
+    }
 
     private fun isBluetoothAudioConnected(): Boolean {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
@@ -239,10 +289,10 @@ class VoiceListeningService : Service() {
         val elapsed = System.currentTimeMillis() - recordingStartTime
         val wordCount = text.split("\\s+".toRegex()).size
         Log.d(TAG, "📝 PARTIAL [${elapsed}ms, $wordCount words]: \"$text\"")
+        if (!firstPartialReceived) { firstPartialReceived = true; interactionTracker.firstPartialReceived(text) }
+        else interactionTracker.partialReceived(text)
         listeners.forEach { it.onPartialTranscript(text) }
-        if (!workflowTriggeredDuringRecording) {
-            checkPartialForWorkflowTrigger(text, elapsed, wordCount)
-        }
+        if (!workflowTriggeredDuringRecording) checkPartialForWorkflowTrigger(text, elapsed, wordCount)
     }
     private fun checkPartialForWorkflowTrigger(partialText: String, elapsedMs: Long, wordCount: Int) = serviceScope.launch {
         // Just log potential matches for debugging - don't execute until we have the full transcript
@@ -281,109 +331,14 @@ class VoiceListeningService : Service() {
     }
     private fun handleRecordingStopped() = serviceScope.launch {
         Log.d(TAG, "🔔 RECORDING STOPPED")
+        interactionTracker.recordingStopped()
         audioFeedback?.playStopTone()
-        // Cancel any pending pause detection - final transcript handler will process remaining
-        pauseDetectionJob?.cancel()
-    }
-    private fun handleFinalChunk(chunk: String, timestamp: Long) {
-        if (chunk.isBlank()) return
-        val elapsed = System.currentTimeMillis() - recordingStartTime
-        Log.d(TAG, "⚡ STREAMING FINAL [${elapsed}ms]: \"$chunk\"")
-        // Accumulate the chunk
-        if (accumulatedTranscript.isNotEmpty()) accumulatedTranscript.append(" ")
-        accumulatedTranscript.append(chunk)
-        streamingMode = true
-        // Cancel previous pause detection and start new one
-        pauseDetectionJob?.cancel()
-        pauseDetectionJob = serviceScope.launch {
-            delay(PAUSE_DETECTION_MS)
-            onPauseDetected()
-        }
-    }
-    private fun onPauseDetected() = serviceScope.launch {
-        val fullText = accumulatedTranscript.toString().trim()
-        if (fullText.isEmpty()) return@launch
-        // Get unconsumed portion of transcript
-        val unconsumedText = if (consumedTriggerEnd < fullText.length) {
-            fullText.substring(consumedTriggerEnd).trim()
-        } else {
-            ""
-        }
-        if (unconsumedText.isEmpty()) {
-            Log.d(TAG, "🔄 PAUSE DETECTED but no new text to process")
-            return@launch
-        }
-        Log.d(TAG, "🔄 PAUSE DETECTED - processing: \"$unconsumedText\"")
-        // Save transcript if not yet saved
-        if (currentTranscriptId == -1L) {
-            val transcript = Transcript(text = fullText, audioFilePath = currentAudioFilePath ?: "", timestamp = System.currentTimeMillis(), excludeFromContext = false)
-            val saved = transcriptRepository.save(transcript)
-            currentTranscriptId = saved.id
-            Log.d(TAG, "💾 SAVED TRANSCRIPT: id=$currentTranscriptId")
-        }
-        // Route the unconsumed text
-        val matches = workflowRouter.route(unconsumedText, currentTranscriptId)
-        if (matches.isEmpty()) {
-            Log.d(TAG, "🔄 No workflow match for: \"$unconsumedText\"")
-            return@launch
-        }
-        Log.d(TAG, "⚡ STREAMING EXECUTE ${matches.size} workflow(s): ${matches.map { it.definition.name }}")
-        // Execute each matched workflow
-        matches.forEach { match ->
-            // Check conditions at execution time
-            if (!workflowRouter.checkConditions(match.definition)) {
-                Log.d(TAG, "⏭ SKIPPING ${match.definition.name}: conditions not met")
-                return@forEach
-            }
-            // Propagate variables from previous executions
-            executedWorkflowVariables.forEach { (key, value) ->
-                match.context.variables[key] = value
-            }
-            listeners.forEach { it.onWorkflowStarted(match.definition.name, unconsumedText) }
-            val result = workflowExecutor.execute(match)
-            when (result) {
-                is WorkflowResult.Success -> {
-                    Log.d(TAG, "✓ STREAMING WORKFLOW ${match.definition.name} SUCCEEDED")
-                    // Propagate output variables for next workflow
-                    result.variables.forEach { (key, value) ->
-                        executedWorkflowVariables[key] = value
-                    }
-                }
-                is WorkflowResult.Failure -> {
-                    Log.e(TAG, "✖ STREAMING WORKFLOW ${match.definition.name} FAILED: ${result.error}")
-                }
-            }
-            listeners.forEach { it.onWorkflowCompleted(match.definition.name) }
-            // Update consumed trigger position based on match position
-            val triggerEndInFull = consumedTriggerEnd + match.triggerEnd
-            if (triggerEndInFull > consumedTriggerEnd) {
-                consumedTriggerEnd = triggerEndInFull
-                Log.d(TAG, "📍 Consumed trigger end updated to: $consumedTriggerEnd")
-            }
-        }
-        workflowTriggeredDuringRecording = true
     }
     private fun handleTranscript(text: String) {
-        if (workflowTriggeredDuringRecording) {
-            Log.d(TAG, "📝 FINAL TRANSCRIPT (streaming execution already handled): \"$text\"")
-            workflowTriggeredDuringRecording = false
-            // Update transcript with full text if it was saved during streaming
-            if (currentTranscriptId > 0) {
-                transcriptRepository.getById(currentTranscriptId)?.let { existing ->
-                    existing.text = text
-                    transcriptRepository.save(existing)
-                    listeners.forEach { it.onTranscriptSaved(existing) }
-                }
-            }
-            resumeMusicIfNeeded()
-            updateNotification("Ready - Long press power button to speak")
-            testCompletionDeferred?.complete(text)
-            testCompletionDeferred = null
-            return
-        }
         val elapsed = System.currentTimeMillis() - recordingStartTime
         val wordCount = text.split("\\s+".toRegex()).size
         Log.d(TAG, "📝 FINAL TRANSCRIPT [${elapsed}ms, $wordCount words]: \"$text\"")
+        interactionTracker.finalTranscriptReceived(text)
         val audioPath = currentAudioFilePath ?: ""
         val transcript = Transcript(text = text, audioFilePath = audioPath, timestamp = System.currentTimeMillis(), excludeFromContext = false)
         transcriptRepository.save(transcript)
@@ -417,11 +372,14 @@ class VoiceListeningService : Service() {
     private fun routeToWorkflow(text: String, transcriptId: Long) = serviceScope.launch {
         try {
             Log.d(TAG, "🔀 ROUTING: \"$text\"")
+            interactionTracker.routingStarted()
             updateNotification("Processing...")
             val matches = workflowRouter.route(text, transcriptId)
             if (matches.isEmpty()) {
                 Log.w(TAG, "⚠ NO WORKFLOW MATCH")
+                interactionTracker.noWorkflowMatched()
                 speak("No workflow matched.")
+                interactionTracker.interactionCompleted(false)
             } else {
                 Log.d(TAG, "✓ MATCHED ${matches.size} WORKFLOW(S): ${matches.map { it.definition.name }}")
                 var executedCount = 0
@@ -432,32 +390,37 @@ class VoiceListeningService : Service() {
                         return@forEach
                     }
                     if (executedCount == 0) {
+                        interactionTracker.workflowMatched(match.definition.name, match.context.matchedTrigger)
                         listeners.forEach { it.onWorkflowStarted(match.definition.name, text) }
                         updateGoldenDatasetWithWorkflow(transcriptId, match.definition.name)
                     }
+                    interactionTracker.actionStarted(match.definition.name)
                     val result = workflowExecutor.execute(match)
                     executedCount++
                     when (result) {
-                        is WorkflowResult.Failure -> { Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); if (matches.size == 1) speak("Workflow failed: ${result.error}") }
-                        else -> Log.d(TAG, "✓ WORKFLOW $executedCount SUCCEEDED")
+                        is WorkflowResult.Failure -> { interactionTracker.actionCompleted(match.definition.name, false); Log.e(TAG, "✖ WORKFLOW FAILED: ${result.error}"); if (matches.size == 1) speak("Workflow failed: ${result.error}") }
+                        else -> { interactionTracker.actionCompleted(match.definition.name, true); Log.d(TAG, "✓ WORKFLOW $executedCount SUCCEEDED") }
                     }
                 }
                 if (executedCount == 0) {
                     Log.w(TAG, "⚠ All workflows skipped due to conditions")
+                    interactionTracker.noWorkflowMatched()
                     speak("No workflow matched.")
+                    interactionTracker.interactionCompleted(false)
+                } else {
+                    interactionTracker.interactionCompleted(true)
                 }
             }
             resumeMusicIfNeeded()
             updateNotification("Ready - Long press power button to speak")
-            testCompletionDeferred?.complete(text)
-            testCompletionDeferred = null
+            completeTestDeferred(text)
         } catch (e: Exception) {
             Log.e(TAG, "✖ WORKFLOW EXCEPTION: ${e.message}", e)
+            interactionTracker.interactionCompleted(false)
             resumeMusicIfNeeded()
             speak("Sorry, something went wrong.")
             updateNotification("Ready - Long press power button to speak")
-            testCompletionDeferred?.complete(null)
-            testCompletionDeferred = null
+            completeTestDeferred(null)
         }
     }
     private fun updateGoldenDatasetWithWorkflow(transcriptId: Long, workflowName: String) {

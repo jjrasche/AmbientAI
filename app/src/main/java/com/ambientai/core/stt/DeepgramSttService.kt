@@ -72,8 +72,9 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
      */
     fun startFromAudioData(audioData: ByteArray) {
         if (isRecording) {
-            Log.w(TAG, "⚠ STT already recording, stopping for test audio")
-            stop()
+            Log.w(TAG, "⚠ STT already recording, stopping silently for test audio reset")
+            // Stop without triggering callbacks - this is a test reset, not a normal stop
+            stopSilently()
         }
         recordingStartTime = System.currentTimeMillis()
         // Skip WAV header (44 bytes) to get raw PCM data
@@ -89,6 +90,28 @@ class DeepgramSttService(private val context: Context, private val onPartialTran
         startWebSocket()
         startAudioFromData(pcmData)
         // No VAD timeout for file playback - we wait for speech_final
+    }
+
+    /**
+     * Stop recording without triggering callbacks.
+     * Used for test resets where we don't want the previous test's transcript to pollute the next test.
+     */
+    private fun stopSilently() {
+        Log.d(TAG, "■ DEEPGRAM STOPPED (silent reset)")
+        isRecording = false
+        webSocketReady = null
+        transcriptComplete = null
+        vadTimeoutJob?.cancel()
+        recordingJob?.cancel()
+        audioRecord?.stop()
+        audioRecord?.release()
+        audioRecord = null
+        webSocket?.close(1000, "Silent reset")
+        webSocket = null
+        // Do NOT call onTranscriptReady or onRecordingStopped - this is a reset
+        currentTranscript.clear()
+        lastPartialTranscript = ""
+        audioBuffer.clear()
     }
     private fun startAudioFromData(pcmData: ByteArray) {
         recordingJob = CoroutineScope(Dispatchers.IO).launch {
