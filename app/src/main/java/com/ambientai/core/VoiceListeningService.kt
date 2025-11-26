@@ -378,7 +378,6 @@ class VoiceListeningService : Service() {
             if (matches.isEmpty()) {
                 Log.w(TAG, "⚠ NO WORKFLOW MATCH")
                 interactionTracker.noWorkflowMatched()
-                speak("No workflow matched.")
                 interactionTracker.interactionCompleted(false)
             } else {
                 Log.d(TAG, "✓ MATCHED ${matches.size} WORKFLOW(S): ${matches.map { it.definition.name }}")

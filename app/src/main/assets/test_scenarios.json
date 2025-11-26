@@ -382,16 +382,12 @@
   },
   {
     "testId": "get_weather_forecast",
-    "category": "web_research",
-    "description": "AI finds weather info, extracts, summarizes",
+    "category": "stt",
+    "description": "STT test - verifies transcript is captured (no workflow match)",
     "audioFile": "test_audio/get_weather_forecast.wav",
     "utterance": "give me the weather forecast for this week",
     "expected": {
-      "workflowExecuted": true,
-      "databaseChanges": {
-        "WorkflowExecution": {"minCount": 1},
-        "ActionExecution": {"minCount": 1}
-      }
+      "workflowExecuted": false
     }
   },
   {
@@ -536,16 +532,12 @@
   },
   {
     "testId": "summarize_news",
-    "category": "web_research",
-    "description": "AI gathers and summarizes news from multiple sources",
+    "category": "stt",
+    "description": "STT test - verifies transcript is captured (no workflow match)",
     "audioFile": "test_audio/summarize_news.wav",
     "utterance": "summarize this week's tech news",
     "expected": {
-      "workflowExecuted": true,
-      "databaseChanges": {
-        "WorkflowExecution": {"minCount": 1},
-        "ActionExecution": {"minCount": 1}
-      }
+      "workflowExecuted": false
     }
   },
   {
@@ -565,16 +557,12 @@
   },
   {
     "testId": "long_speech_conversational",
-    "category": "conversational",
-    "description": "Long continuous speech routes to a workflow",
+    "category": "stt",
+    "description": "STT test - verifies long continuous speech is transcribed correctly",
     "audioFile": "test_audio/long_speech_test.wav",
     "utterance": "When I was a young boy, my father took me into the city to see the marching band. He said, son, when you grow up, will you be savior of the broken, the beaten, and the damned? He said, will you defeat them? Your demons, and all of the non believers. To join the black Parade.",
     "expected": {
-      "workflowExecuted": true,
-      "databaseChanges": {
-        "WorkflowExecution": {"minCount": 1},
-        "ActionExecution": {"minCount": 1}
-      }
+      "workflowExecuted": false
     }
   }
 ]

@@ -511,7 +511,7 @@ class RegressionTestExecutor @Inject constructor(
             }
 
             // Wait for async operations to complete before next test
-            delay(500)
+            delay(1000)
         } catch (e: Exception) {
             Log.e(TAG, "Error during cleanup", e)
         }
